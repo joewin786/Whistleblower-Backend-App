@@ -1,0 +1,515 @@
+openapi: 3.1.0
+info:
+  title: Whistle Blower API
+  version: 1.0.0
+  description: |
+    REST API for Whistle Blower platform that supports anonymous reporting, evidence submission, case management, and admin configuration.
+
+servers:
+  - url: https://api.example.com/api/v1
+    description: Production Server
+  - url: http://localhost:8080/api/v1
+    description: Local Development
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Reports
+  - name: Evidence
+  - name: Messages
+  - name: Analytics
+  - name: Admin Config
+
+paths:
+  # ---------------------------
+  # AUTH
+  # ---------------------------
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "201": { description: User registered successfully }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login to obtain JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      responses:
+        "200": { description: Token refreshed successfully }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout user
+      responses:
+        "200": { description: Logout successful }
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+      responses:
+        "200": { description: Password reset link sent }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # ---------------------------
+  # USERS
+  # ---------------------------
+  /users:
+    get:
+      tags: [Users]
+      summary: Get list of users (admin)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200": { description: User found }
+
+    patch:
+      tags: [Users]
+      summary: Update user details
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200": { description: User updated }
+
+  # ---------------------------
+  # REPORTS
+  # ---------------------------
+  /reports:
+    get:
+      tags: [Reports]
+      summary: Get all reports
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Report" }
+
+    post:
+      tags: [Reports]
+      summary: Create new report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportCreate"
+      responses:
+        "201": { description: Report created }
+
+  /reports/my:
+    get:
+      tags: [Reports]
+      summary: Get reports submitted by current user
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: User's reports }
+
+  /reports/{reportId}:
+    get:
+      tags: [Reports]
+      summary: Get report details
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+      responses:
+        "200": { description: Report details }
+
+    patch:
+      tags: [Reports]
+      summary: Update report
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportUpdate"
+      responses:
+        "200": { description: Report updated }
+
+    delete:
+      tags: [Reports]
+      summary: Delete report
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+      responses:
+        "204": { description: Report deleted }
+
+  # ---------------------------
+  # EVIDENCE
+  # ---------------------------
+  /reports/{reportId}/evidence:
+    get:
+      tags: [Evidence]
+      summary: List evidence for a report
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+      responses:
+        "200": { description: Evidence list }
+
+    post:
+      tags: [Evidence]
+      summary: Upload new evidence
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201": { description: Evidence uploaded }
+
+  /reports/{reportId}/evidence/{evidenceId}:
+    get:
+      tags: [Evidence]
+      summary: Get evidence details
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+        - $ref: "#/components/parameters/evidenceId"
+      responses:
+        "200": { description: Evidence details }
+
+    delete:
+      tags: [Evidence]
+      summary: Delete evidence
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+        - $ref: "#/components/parameters/evidenceId"
+      responses:
+        "204": { description: Evidence deleted }
+
+  # ---------------------------
+  # MESSAGES
+  # ---------------------------
+  /reports/{reportId}/messages:
+    get:
+      tags: [Messages]
+      summary: Get messages for a report
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+      responses:
+        "200": { description: List of messages }
+
+    post:
+      tags: [Messages]
+      summary: Send new message in report chat
+      parameters:
+        - $ref: "#/components/parameters/reportId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageCreate"
+      responses:
+        "201": { description: Message sent }
+
+  # ---------------------------
+  # ANALYTICS
+  # ---------------------------
+  /analytics/overview:
+    get:
+      tags: [Analytics]
+      summary: Get dashboard overview
+      responses:
+        "200": { description: Overview stats }
+
+  /analytics/trends:
+    get:
+      tags: [Analytics]
+      summary: Get report trends
+      responses:
+        "200": { description: Trend data }
+
+  /analytics/by-categories:
+    get:
+      tags: [Analytics]
+      summary: Reports grouped by categories
+      responses:
+        "200": { description: Category stats }
+
+  /analytics/by-status:
+    get:
+      tags: [Analytics]
+      summary: Reports grouped by status
+      responses:
+        "200": { description: Status stats }
+
+  /analytics/investigator-performance:
+    get:
+      tags: [Analytics]
+      summary: Investigator performance metrics
+      responses:
+        "200": { description: Investigator data }
+
+  /analytics/reports/generate:
+    post:
+      tags: [Analytics]
+      summary: Generate analytics report (PDF/Excel)
+      responses:
+        "200": { description: Report generated }
+
+  # ---------------------------
+  # ADMIN CONFIG
+  # ---------------------------
+  /admin/config/categories:
+    get:
+      tags: [Admin Config]
+      summary: Get categories
+      responses:
+        "200": { description: Category list }
+
+    post:
+      tags: [Admin Config]
+      summary: Create category
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Category"
+      responses:
+        "201": { description: Category created }
+
+  /admin/config/categories/{catId}:
+    patch:
+      tags: [Admin Config]
+      summary: Update category
+      parameters:
+        - $ref: "#/components/parameters/catId"
+      responses:
+        "200": { description: Category updated }
+
+    delete:
+      tags: [Admin Config]
+      summary: Delete category
+      parameters:
+        - $ref: "#/components/parameters/catId"
+      responses:
+        "204": { description: Category deleted }
+
+  /admin/config/roles:
+    get:
+      tags: [Admin Config]
+      summary: Get roles
+      responses:
+        "200": { description: List of roles }
+
+    post:
+      tags: [Admin Config]
+      summary: Create role
+      responses:
+        "201": { description: Role created }
+
+  /admin/config/roles/{roleId}:
+    patch:
+      tags: [Admin Config]
+      summary: Update role
+      parameters:
+        - $ref: "#/components/parameters/roleId"
+      responses:
+        "200": { description: Role updated }
+
+  /admin/config/settings:
+    get:
+      tags: [Admin Config]
+      summary: Get global settings
+      responses:
+        "200": { description: Settings retrieved }
+
+    put:
+      tags: [Admin Config]
+      summary: Update global settings
+      responses:
+        "200": { description: Settings updated }
+
+  /admin/config/workflows:
+    get:
+      tags: [Admin Config]
+      summary: Get workflow configuration
+      responses:
+        "200": { description: Workflow configuration retrieved }
+
+    put:
+      tags: [Admin Config]
+      summary: Update workflow configuration
+      responses:
+        "200": { description: Workflow configuration updated }
+
+# ---------------------------
+# COMPONENTS
+# ---------------------------
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string }
+    reportId:
+      name: reportId
+      in: path
+      required: true
+      schema: { type: string }
+    evidenceId:
+      name: evidenceId
+      in: path
+      required: true
+      schema: { type: string }
+    catId:
+      name: catId
+      in: path
+      required: true
+      schema: { type: string }
+    roleId:
+      name: roleId
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    UserUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+
+    Report:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string }
+        category: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    ReportCreate:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+
+    ReportUpdate:
+      type: object
+      properties:
+        status: { type: string }
+        notes: { type: string }
+
+    MessageCreate:
+      type: object
+      properties:
+        message: { type: string }
+        attachments:
+          type: array
+          items: { type: string, format: binary }
+
+    Category:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
