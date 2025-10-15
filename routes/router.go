@@ -3,11 +3,14 @@ package routes
 import (
 	"net/http"
 	"whistleblower_REST/internal/auth"
+	"whistleblower_REST/internal/evidence"
 	"whistleblower_REST/internal/utils"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"gorm.io/gorm"
+
+	"whistleblower_REST/internal/reports"
 )
 
 func RegisterRoutes(db *gorm.DB) *chi.Mux {
@@ -19,6 +22,9 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 	authHandler := &auth.AuthHandler{DB: db}
 	authMiddleware := auth.AuthMiddleware()
+	
+	reportHandler := reports.NewHandler(db)
+	evidenceHandler := evidence.NewHandler(db)
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -60,42 +66,19 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
-			r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "create func(w http.ResponseWriter, r *http.Request) {report"})
-			})
-			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "get all reports"})
-			})
-			r.Get("/my", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "get my reports"})
-			})
-			r.Get("/{reportId}", func(w http.ResponseWriter, r *http.Request) {
-				reportId := chi.URLParam(r, "reportId")
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "get report by id", "reportId": reportId})
-			})
-			r.Patch("/{reportId}", func(w http.ResponseWriter, r *http.Request) {
-				reportId := chi.URLParam(r, "reportId")
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "update report", "reportId": reportId})
-			})
-			r.Delete("/{reportId}", func(w http.ResponseWriter, r *http.Request) {
-				reportId := chi.URLParam(r, "reportId")
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "delete report", "reportId": reportId})
-			})
+			r.Post("/", reportHandler.Create)
+			r.Get("/", reportHandler.GetAll)
+			r.Get("/my", reportHandler.GetMy)
+			r.Get("/{reportId}", reportHandler.GetByID)
+			r.Patch("/{reportId}", reportHandler.Update)
+			r.Delete("/{reportId}", reportHandler.Delete)
+			
 
 			// === EVIDENCE nested routes ===
 			r.Route("/{reportId}/evidence", func(r chi.Router) {
-				r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-					utils.RespondWithJSON(w, 200, map[string]string{"message": "get evidence list"})
-				})
-				r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-					utils.RespondWithJSON(w, 200, map[string]string{"message": "upload evidence"})
-				})
-				r.Get("/{evidenceId}", func(w http.ResponseWriter, r *http.Request) {
-					utils.RespondWithJSON(w, 200, map[string]string{"message": "get evidence by id"})
-				})
-				r.Delete("/{evidenceId}", func(w http.ResponseWriter, r *http.Request) {
-					utils.RespondWithJSON(w, 200, map[string]string{"message": "delete evidence"})
-				})
+				r.Get("/", evidenceHandler.GetByReport)
+				r.Post("/", evidenceHandler.Create)
+				r.Delete("/{evidenceId}", evidenceHandler.Delete)
 			})
 
 			// === MESSAGES nested routes ===
