@@ -2,20 +2,23 @@ package routes
 
 import (
 	"database/sql"
+	"whistleblower_REST/internal/auth"
 
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterRoutes(r *gin.Engine, db *sql.DB) {
+	authHandler := &auth.AuthHandler{DB: db}
+
 	// ===== Public Routes =====
-	auth := r.Group("/auth")
+	authGroup := r.Group("/authGroup")
 	{
-		auth.POST("/register", func(c *gin.Context) { c.JSON(200, gin.H{"message": "register"}) })
-		auth.POST("/login", func(c *gin.Context) { c.JSON(200, gin.H{"message": "login"}) })
-		auth.POST("/refresh", func(c *gin.Context) { c.JSON(200, gin.H{"message": "refresh"}) })
-		auth.POST("/logout", func(c *gin.Context) { c.JSON(200, gin.H{"message": "logout"}) })
-		auth.POST("/reset-password", func(c *gin.Context) { c.JSON(200, gin.H{"message": "reset password"}) })
-		auth.GET("/me", func(c *gin.Context) { c.JSON(200, gin.H{"message": "me"}) })
+		authGroup.POST("/register", authHandler.Register)
+		authGroup.POST("/login", authHandler.Login)
+		authGroup.POST("/refresh", func(c *gin.Context) { c.JSON(200, gin.H{"message": "refresh"}) })
+		authGroup.POST("/logout", func(c *gin.Context) { c.JSON(200, gin.H{"message": "logout"}) })
+		authGroup.POST("/reset-password", func(c *gin.Context) { c.JSON(200, gin.H{"message": "reset password"}) })
+		authGroup.GET("/me", authHandler.Me)
 	}
 
 	// ===== Protected Routes (placeholder, add middleware later) =====

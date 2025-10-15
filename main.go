@@ -25,10 +25,11 @@ func main() {
 	}
 	defer db.Close()
 
+	// Run auto migration
+	database.RunMigrations(db)
+
 	// Setup Gin router
 	r := gin.Default()
-
-	// Initialize routes
 	routes.RegisterRoutes(r, db)
 
 	// Run the server
