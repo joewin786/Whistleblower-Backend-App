@@ -55,14 +55,14 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 
 	var hashed string
 	var userID string
-	err := h.DB.QueryRow(`SELECT uid FROM users WHERE email = ?`, input.Email).Scan(&userID, &hashed)
+	err := h.DB.QueryRow(`SELECT uid, password FROM users WHERE email = ?`, input.Email).Scan(&userID, &hashed)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if !CheckPasswordHash(hashed, input.Password) {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+	if !CheckPasswordHash(input.Password, hashed) {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
 		return
 	}
 
