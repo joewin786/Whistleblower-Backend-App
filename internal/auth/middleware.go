@@ -1,28 +1,30 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"strings"
-
-	"github.com/gin-gonic/gin"
+	"whistleblower_REST/internal/utils"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		authHeader := ctx.GetHeader("Authorization")
-		if authHeader == "" {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
-			return
-		}
+func AuthMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				utils.RespondWithError(w, http.StatusUnauthorized, "missing token")
+				return
+			}
 
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		uid, err := ValidateToken(token)
-		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			id, err := ValidateToken(token)
+			if err != nil {
+				utils.RespondWithError(w, http.StatusUnauthorized, "invalid token")
+				return
+			}
 
-		ctx.Set("uid", uid)
-		ctx.Next()
+			ctx := context.WithValue(r.Context(), "id", id)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}
 }

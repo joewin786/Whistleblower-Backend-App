@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"whistleblower_REST/internal/database"
 	"whistleblower_REST/routes"
 
-	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
@@ -29,8 +29,8 @@ func main() {
 	database.RunMigrations(db)
 
 	// Setup Gin router
-	r := gin.Default()
-	routes.RegisterRoutes(r, db)
+
+	r := routes.RegisterRoutes(db)
 
 	// Run the server
 	port := os.Getenv("PORT")
@@ -40,6 +40,7 @@ func main() {
 	addr := fmt.Sprintf(":%s", port)
 
 	log.Printf("🚀 Server running on http://localhost%s", addr)
-	r.Run(addr)
-
+	if err := http.ListenAndServe(addr, r); err != nil {
+		log.Fatalf("❌ Server failed: %v", err)
+	}
 }

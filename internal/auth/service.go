@@ -21,9 +21,9 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func GenerateToken(uid string) (string, error) {
+func GenerateToken(id string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":  uid,
+		"id":  id,
 		"exp": time.Now().Add(time.Hour * 72).Unix(),
 	})
 	return token.SignedString(jwtSecret)
@@ -40,8 +40,8 @@ func ValidateToken(tokenString string) (string, error) {
 		return "", errors.New("invalid token")
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
-		if uid, ok := claims["uid"].(string); ok {
-			return uid, nil
+		if id, ok := claims["id"].(string); ok {
+			return id, nil
 		}
 	}
 	return "", errors.New("invalid token claims")

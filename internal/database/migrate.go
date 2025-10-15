@@ -9,7 +9,7 @@ import (
 func RunMigrations(db *sql.DB) {
 	createUsers := `
 	CREATE TABLE IF NOT EXISTS users (
-		uid TEXT PRIMARY KEY,
+		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
 		email TEXT UNIQUE NOT NULL,
 		password TEXT NOT NULL,
@@ -19,12 +19,12 @@ func RunMigrations(db *sql.DB) {
 	createReports := `
 	CREATE TABLE IF NOT EXISTS reports (
 		id TEXT PRIMARY KEY,
-		user_uid TEXT NOT NULL,
+		user_id TEXT NOT NULL,
 		title TEXT NOT NULL,
 		description TEXT,
 		status TEXT DEFAULT 'pending',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(user_uid) REFERENCES users(uid)
+		FOREIGN KEY(user_id) REFERENCES users(id)
 	);`
 
 	createEvidence := `
@@ -40,11 +40,11 @@ func RunMigrations(db *sql.DB) {
 	CREATE TABLE IF NOT EXISTS messages (
 		id TEXT PRIMARY KEY,
 		report_id TEXT NOT NULL,
-		sender_uid TEXT NOT NULL,
+		sender_id TEXT NOT NULL,
 		message TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(report_id) REFERENCES reports(id),
-		FOREIGN KEY(sender_uid) REFERENCES users(uid)
+		FOREIGN KEY(sender_id) REFERENCES users(id)
 	);`
 
 	stmts := []string{
