@@ -18,18 +18,16 @@ func main() {
 		log.Println("⚠️  No .env file found, using system environment variables")
 	}
 
-	// Initialize the database
+	// Initialize the database (GORM)
 	db, err := database.InitDB()
 	if err != nil {
 		log.Fatal("❌ Failed to connect to database:", err)
 	}
-	defer db.Close()
 
 	// Run auto migration
 	database.RunMigrations(db)
 
-	// Setup Gin router
-
+	// Setup router with GORM DB
 	r := routes.RegisterRoutes(db)
 
 	// Run the server

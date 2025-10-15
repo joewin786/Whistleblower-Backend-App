@@ -1,64 +1,55 @@
 package database
 
 import (
-	"database/sql"
 	"log"
+	"time"
+
+	"gorm.io/gorm"
 )
 
-// RunMigrations creates tables if they don't exist
-func RunMigrations(db *sql.DB) {
-	createUsers := `
-	CREATE TABLE IF NOT EXISTS users (
-		id TEXT PRIMARY KEY,
-		name TEXT NOT NULL,
-		email TEXT UNIQUE NOT NULL,
-		password TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);`
-
-	createReports := `
-	CREATE TABLE IF NOT EXISTS reports (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		title TEXT NOT NULL,
-		description TEXT,
-		status TEXT DEFAULT 'pending',
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(user_id) REFERENCES users(id)
-	);`
-
-	createEvidence := `
-	CREATE TABLE IF NOT EXISTS evidence (
-		id TEXT PRIMARY KEY,
-		report_id TEXT NOT NULL,
-		file_path TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(report_id) REFERENCES reports(id)
-	);`
-
-	createMessages := `
-	CREATE TABLE IF NOT EXISTS messages (
-		id TEXT PRIMARY KEY,
-		report_id TEXT NOT NULL,
-		sender_id TEXT NOT NULL,
-		message TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(report_id) REFERENCES reports(id),
-		FOREIGN KEY(sender_id) REFERENCES users(id)
-	);`
-
-	stmts := []string{
-		createUsers,
-		createReports,
-		createEvidence,
-		createMessages,
+// RunMigrations uses GORM AutoMigrate to create/update tables.
+func RunMigrations(db *gorm.DB) {
+	type User struct {
+		ID        string    `gorm:"primaryKey;type:text"`
+		Name      string    `gorm:"not null"`
+		Email     string    `gorm:"uniqueIndex;not null"`
+		Password  string    `gorm:"not null"`
+		CreatedAt time.Time `gorm:"autoCreateTime"`
 	}
 
-	for _, stmt := range stmts {
-		_, err := db.Exec(stmt)
-		if err != nil {
-			log.Fatalf("migration error: %v\nSQL: %s", err, stmt)
-		}
+	type Report struct {
+		ID          string `gorm:"primaryKey;type:text"`
+		UserID      string `gorm:"not null;index"`
+		Title       string `gorm:"not null"`
+		Description string
+		Status      string    `gorm:"default:pending;index"`
+		CreatedAt   time.Time `gorm:"autoCreateTime"`
+		// Foreign keys
+		User User `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;foreignKey:UserID;references:ID"`
+	}
+
+	type Evidence struct {
+		ID        string    `gorm:"primaryKey;type:text"`
+		ReportID  string    `gorm:"not null;index"`
+		FilePath  string    `gorm:"not null"`
+		CreatedAt time.Time `gorm:"autoCreateTime"`
+		// Foreign keys
+		Report Report `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ReportID;references:ID"`
+	}
+
+	type Message struct {
+		ID        string    `gorm:"primaryKey;type:text"`
+		ReportID  string    `gorm:"not null;index"`
+		SenderID  string    `gorm:"not null;index"`
+		Message   string    `gorm:"not null"`
+		CreatedAt time.Time `gorm:"autoCreateTime"`
+		// Foreign keys
+		Report Report `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ReportID;references:ID"`
+		User   User   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;foreignKey:SenderID;references:ID"`
+	}
+
+	if err := db.AutoMigrate(&User{}, &Report{}, &Evidence{}, &Message{}); err != nil {
+		log.Fatalf("migration error: %v", err)
 	}
 
 	log.Println("✅ Database migrated successfully")

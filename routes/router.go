@@ -1,16 +1,16 @@
 package routes
 
 import (
-	"database/sql"
 	"net/http"
 	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/utils"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"gorm.io/gorm"
 )
 
-func RegisterRoutes(db *sql.DB) *chi.Mux {
+func RegisterRoutes(db *gorm.DB) *chi.Mux {
 	r := chi.NewRouter()
 
 	// === Global middleware ===
@@ -24,9 +24,7 @@ func RegisterRoutes(db *sql.DB) *chi.Mux {
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/register", authHandler.Register)
 		r.Post("/login", authHandler.Login)
-		r.Post("/refresh", func(w http.ResponseWriter, r *http.Request) {
-			utils.RespondWithJSON(w, 200, map[string]string{"message": "refresh"})
-		})
+		r.Post("/refresh", authHandler.Refresh)
 		r.Post("/logout", func(w http.ResponseWriter, r *http.Request) {
 			utils.RespondWithJSON(w, 200, map[string]string{"message": "logout"})
 		})
@@ -63,7 +61,7 @@ func RegisterRoutes(db *sql.DB) *chi.Mux {
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
 			r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "create report"})
+				utils.RespondWithJSON(w, 200, map[string]string{"message": "create func(w http.ResponseWriter, r *http.Request) {report"})
 			})
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				utils.RespondWithJSON(w, 200, map[string]string{"message": "get all reports"})
