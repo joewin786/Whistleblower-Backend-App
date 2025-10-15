@@ -44,7 +44,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "User registered successfully"})
+	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "User registered successfully"})
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -66,8 +66,21 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _ := GenerateToken(userID)
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"token": token})
+	accessToken, err := GenerateToken(userID)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate access token")
+		return
+	}
+	refreshToken, err := GenerateRefreshToken(userID)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate refresh token")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+	})
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
@@ -87,4 +100,38 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, user)
+}
+
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req RefreshTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	id, err := ValidateRefreshToken(req.RefreshToken)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "invalid refresh token")
+		return
+	}
+
+	accessToken, err := GenerateToken(id)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate access token")
+		return
+	}
+	newRefreshToken, err := GenerateRefreshToken(id)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate refresh token")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": newRefreshToken,
+	})
 }

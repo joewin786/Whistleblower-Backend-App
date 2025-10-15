@@ -69,8 +69,24 @@ paths:
     post:
       tags: [Auth]
       summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string}
       responses:
-        "200": { description: Token refreshed successfully }
+        "200":
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
 
   /auth/logout:
     post:
