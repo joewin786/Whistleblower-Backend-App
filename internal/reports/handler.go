@@ -1,222 +1,144 @@
 package reports
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"whistleblower_REST/internal/utils"
 )
 
-type ReportsHandler struct {
-	DB *sql.DB
+type Handler struct {
+	DB *gorm.DB
 }
 
-type CreateReportRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Category    string `json:"category"`
-}
+func NewHandler(db *gorm.DB) *Handler { return &Handler{DB: db} }
 
-type UpdateReportRequest struct {
-	Title       *string `json:"title,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Category    *string `json:"category,omitempty"`
-	Status      *string `json:"status,omitempty"`
-}
-
-
-func (h *ReportsHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var input CreateReportRequest
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+// POST /reports
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	var in CreateReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	userUID := r.Context().Value("uid").(string)
-	reportID := uuid.NewString()
-
-	_, err := h.DB.Exec(`
-		INSERT INTO reports (id, user_uid, title, description, category, status)
-		VALUES (?, ?, ?, ?, ?, 'OPEN')`,
-		reportID, userUID, input.Title, input.Description, input.Category,
-	)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+	uid, _ := r.Context().Value("uid").(string)
+	if uid == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{
-		"message": "report created successfully",
-		"id":      reportID,
-	})
+	rp := &Report{
+		ID:          uuid.NewString(),
+		UserUID:     uid,
+		Title:       in.Title,
+		Description: in.Description,
+		Category:    in.Category,
+		Status:      "OPEN",
+	}
+	if err := h.DB.Create(rp).Error; err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondWithJSON(w, http.StatusCreated, rp)
 }
 
-// GET /reports
-func (h *ReportsHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+// GET /reports?status=&category=
+func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	category := r.URL.Query().Get("category")
 
-	query := `SELECT id, user_uid, title, description, category, status, created_at
-			  FROM reports WHERE 1=1`
-	args := []interface{}{}
-
+	var list []Report
+	tx := h.DB.Model(&Report{})
 	if status != "" {
-		query += " AND status = ?"
-		args = append(args, status)
+		tx = tx.Where("status = ?", status)
 	}
 	if category != "" {
-		query += " AND category = ?"
-		args = append(args, category)
+		tx = tx.Where("category = ?", category)
 	}
-
-	rows, err := h.DB.Query(query, args...)
-	if err != nil {
+	if err := tx.Order("created_at DESC").Find(&list).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	defer rows.Close()
-
-	var reports []map[string]interface{}
-	for rows.Next() {
-		var r Report
-		if err := rows.Scan(&r.ID, &r.UserUID, &r.Title, &r.Description, &r.Category, &r.Status, &r.CreatedAt); err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		reports = append(reports, map[string]interface{}{
-			"id":          r.ID,
-			"user_uid":    r.UserUID,
-			"title":       r.Title,
-			"description": r.Description,
-			"category":    r.Category,
-			"status":      r.Status,
-			"created_at":  r.CreatedAt,
-		})
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, reports)
+	utils.RespondWithJSON(w, http.StatusOK, list)
 }
 
 // GET /reports/my
-func (h *ReportsHandler) GetMy(w http.ResponseWriter, r *http.Request) {
-	userUID := r.Context().Value("uid").(string)
-
-	rows, err := h.DB.Query(`
-		SELECT id, title, description, category, status, created_at
-		FROM reports WHERE user_uid = ? ORDER BY created_at DESC`,
-		userUID,
-	)
-	if err != nil {
+func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
+	uid, _ := r.Context().Value("uid").(string)
+	if uid == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var list []Report
+	if err := h.DB.Where("user_uid = ?", uid).Order("created_at DESC").Find(&list).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	defer rows.Close()
+	utils.RespondWithJSON(w, http.StatusOK, list)
+}
 
-	var reports []map[string]interface{}
-	for rows.Next() {
-		var r Report
-		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.Category, &r.Status, &r.CreatedAt); err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+// GET /reports/{reportId}
+func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "reportId")
+	var rp Report
+	if err := h.DB.First(&rp, "id = ?", id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.RespondWithError(w, http.StatusNotFound, "report not found")
 			return
 		}
-		reports = append(reports, map[string]interface{}{
-			"id":          r.ID,
-			"title":       r.Title,
-			"description": r.Description,
-			"category":    r.Category,
-			"status":      r.Status,
-			"created_at":  r.CreatedAt,
-		})
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, reports)
-}
-
-// GET /reports/{id}
-func (h *ReportsHandler) GetByID(w http.ResponseWriter, r *http.Request, id string) {
-	var report Report
-	err := h.DB.QueryRow(`
-		SELECT id, user_uid, title, description, category, status, created_at
-		FROM reports WHERE id = ?`, id).
-		Scan(&report.ID, &report.UserUID, &report.Title, &report.Description, &report.Category, &report.Status, &report.CreatedAt)
-
-	if err == sql.ErrNoRows {
-		utils.RespondWithError(w, http.StatusNotFound, "report not found")
-		return
-	} else if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	utils.RespondWithJSON(w, http.StatusOK, report)
+	utils.RespondWithJSON(w, http.StatusOK, rp)
 }
 
-// PATCH /reports/{id}
-func (h *ReportsHandler) Update(w http.ResponseWriter, r *http.Request, id string) {
-	var req UpdateReportRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+// PATCH /reports/{reportId}
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "reportId")
+	var in UpdateReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	query := `UPDATE reports SET `
-	args := []interface{}{}
-	updates := []string{}
-
-	if req.Title != nil {
-		updates = append(updates, "title = ?")
-		args = append(args, *req.Title)
+	updates := map[string]any{}
+	if in.Title != nil {
+		updates["title"] = *in.Title
 	}
-	if req.Description != nil {
-		updates = append(updates, "description = ?")
-		args = append(args, *req.Description)
+	if in.Description != nil {
+		updates["description"] = *in.Description
 	}
-	if req.Category != nil {
-		updates = append(updates, "category = ?")
-		args = append(args, *req.Category)
+	if in.Category != nil {
+		updates["category"] = *in.Category
 	}
-	if req.Status != nil {
-		updates = append(updates, "status = ?")
-		args = append(args, *req.Status)
+	if in.Status != nil {
+		updates["status"] = *in.Status
 	}
-
 	if len(updates) == 0 {
 		utils.RespondWithError(w, http.StatusBadRequest, "no fields to update")
 		return
 	}
 
-	query += (stringJoin(updates, ", ") + " WHERE id = ?")
-	args = append(args, id)
-
-	_, err := h.DB.Exec(query, args...)
-	if err != nil {
+	if err := h.DB.Model(&Report{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report updated"})
 }
 
-// DELETE /reports/{id}
-func (h *ReportsHandler) Delete(w http.ResponseWriter, r *http.Request, id string) {
-	_, err := h.DB.Exec(`DELETE FROM reports WHERE id = ?`, id)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+// DELETE /reports/{reportId}
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "reportId")
+	res := h.DB.Delete(&Report{}, "id = ?", id)
+	if res.Error != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
+		return
+	}
+	if res.RowsAffected == 0 {
+		utils.RespondWithError(w, http.StatusNotFound, "not found")
 		return
 	}
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report deleted"})
-}
-
-// Helper
-func stringJoin(arr []string, sep string) string {
-	if len(arr) == 0 {
-		return ""
-	}
-	out := arr[0]
-	for _, s := range arr[1:] {
-		out += sep + s
-	}
-	return out
 }

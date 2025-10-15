@@ -2,16 +2,14 @@ package evidence
 
 import "time"
 
-// Evidence mewakili satu file bukti laporan
 type Evidence struct {
-	ID        string    `json:"id"`
-	ReportID  string    `json:"report_id"`
+	ID        string    `json:"id" gorm:"type:char(36);primaryKey"`
+	ReportID  string    `json:"report_id" gorm:"type:char(36);index"`
 	FilePath  string    `json:"file_path"`
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
-// CreateEvidenceRequest digunakan untuk tambah bukti baru
+// optional kalau mau terima body JSON juga (selain path param)
 type CreateEvidenceRequest struct {
-	ReportID string `json:"report_id" binding:"required"`
 	FilePath string `json:"file_path" binding:"required"`
 }
