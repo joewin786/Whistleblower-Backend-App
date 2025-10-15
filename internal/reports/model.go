@@ -10,7 +10,6 @@ type Report struct {
 	Category    string    `json:"category" gorm:"index"`
 	Status      string    `json:"status" gorm:"index"` // OPEN | IN_PROGRESS | RESOLVED
 	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 // Request DTO
