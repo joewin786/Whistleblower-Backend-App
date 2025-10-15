@@ -1,112 +1,222 @@
 package reports
 
 import (
+	"database/sql"
+	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/gin-gonic/gin"
-	"whistleblower_REST/internal/auth"
+	"github.com/google/uuid"
+	"whistleblower_REST/internal/utils"
 )
 
-// Handler mengatur semua endpoint /reports
-type Handler struct {
-	repo Repository
+type ReportsHandler struct {
+	DB *sql.DB
 }
 
-func NewHandler(r Repository) *Handler {
-	return &Handler{repo: r}
+type CreateReportRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
 }
 
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("", h.GetAll)
-	rg.POST("", auth.AuthMiddleware(), h.Create)
-	rg.GET("/my", auth.AuthMiddleware(), h.GetMy)
-	rg.GET("/:reportId", h.GetByID)
-	rg.PATCH("/:reportId", auth.AuthMiddleware(), h.Patch)
-	rg.DELETE("/:reportId", auth.AuthMiddleware(), h.Delete)
+type UpdateReportRequest struct {
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Category    *string `json:"category,omitempty"`
+	Status      *string `json:"status,omitempty"`
+}
+
+
+func (h *ReportsHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var input CreateReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	userUID := r.Context().Value("uid").(string)
+	reportID := uuid.NewString()
+
+	_, err := h.DB.Exec(`
+		INSERT INTO reports (id, user_uid, title, description, category, status)
+		VALUES (?, ?, ?, ?, ?, 'OPEN')`,
+		reportID, userUID, input.Title, input.Description, input.Category,
+	)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{
+		"message": "report created successfully",
+		"id":      reportID,
+	})
 }
 
 // GET /reports
-func (h *Handler) GetAll(c *gin.Context) {
-	status := c.Query("status")
-	category := c.Query("category")
-	items, err := h.repo.GetAll(c, status, category)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list"})
-		return
-	}
-	c.JSON(http.StatusOK, items)
-}
+func (h *ReportsHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	category := r.URL.Query().Get("category")
 
-// POST /reports
-func (h *Handler) Create(c *gin.Context) {
-	var req CreateReportRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	query := `SELECT id, user_uid, title, description, category, status, created_at
+			  FROM reports WHERE 1=1`
+	args := []interface{}{}
+
+	if status != "" {
+		query += " AND status = ?"
+		args = append(args, status)
+	}
+	if category != "" {
+		query += " AND category = ?"
+		args = append(args, category)
+	}
+
+	rows, err := h.DB.Query(query, args...)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	rp := &Report{
-		Title:       req.Title,
-		Description: req.Description,
-		Category:    req.Category,
-		Status:      "OPEN",
-		UserID:      c.GetInt64("userID"),
+	defer rows.Close()
+
+	var reports []map[string]interface{}
+	for rows.Next() {
+		var r Report
+		if err := rows.Scan(&r.ID, &r.UserUID, &r.Title, &r.Description, &r.Category, &r.Status, &r.CreatedAt); err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		reports = append(reports, map[string]interface{}{
+			"id":          r.ID,
+			"user_uid":    r.UserUID,
+			"title":       r.Title,
+			"description": r.Description,
+			"category":    r.Category,
+			"status":      r.Status,
+			"created_at":  r.CreatedAt,
+		})
 	}
-	if err := h.repo.Create(c, rp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create"})
-		return
-	}
-	c.JSON(http.StatusCreated, rp)
+
+	utils.RespondWithJSON(w, http.StatusOK, reports)
 }
 
 // GET /reports/my
-func (h *Handler) GetMy(c *gin.Context) {
-	uid := c.GetInt64("userID")
-	items, err := h.repo.GetByUser(c, uid)
+func (h *ReportsHandler) GetMy(w http.ResponseWriter, r *http.Request) {
+	userUID := r.Context().Value("uid").(string)
+
+	rows, err := h.DB.Query(`
+		SELECT id, title, description, category, status, created_at
+		FROM reports WHERE user_uid = ? ORDER BY created_at DESC`,
+		userUID,
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list"})
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, items)
+	defer rows.Close()
+
+	var reports []map[string]interface{}
+	for rows.Next() {
+		var r Report
+		if err := rows.Scan(&r.ID, &r.Title, &r.Description, &r.Category, &r.Status, &r.CreatedAt); err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		reports = append(reports, map[string]interface{}{
+			"id":          r.ID,
+			"title":       r.Title,
+			"description": r.Description,
+			"category":    r.Category,
+			"status":      r.Status,
+			"created_at":  r.CreatedAt,
+		})
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, reports)
 }
 
-// GET /reports/{reportId}
-func (h *Handler) GetByID(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("reportId"), 10, 64)
-	item, err := h.repo.GetByID(c, id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get"})
+// GET /reports/{id}
+func (h *ReportsHandler) GetByID(w http.ResponseWriter, r *http.Request, id string) {
+	var report Report
+	err := h.DB.QueryRow(`
+		SELECT id, user_uid, title, description, category, status, created_at
+		FROM reports WHERE id = ?`, id).
+		Scan(&report.ID, &report.UserUID, &report.Title, &report.Description, &report.Category, &report.Status, &report.CreatedAt)
+
+	if err == sql.ErrNoRows {
+		utils.RespondWithError(w, http.StatusNotFound, "report not found")
+		return
+	} else if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if item == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
-	}
-	c.JSON(http.StatusOK, item)
+
+	utils.RespondWithJSON(w, http.StatusOK, report)
 }
 
-// PATCH /reports/{reportId}
-func (h *Handler) Patch(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("reportId"), 10, 64)
+// PATCH /reports/{id}
+func (h *ReportsHandler) Update(w http.ResponseWriter, r *http.Request, id string) {
 	var req UpdateReportRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	item, err := h.repo.UpdatePartial(c, id, req)
+
+	query := `UPDATE reports SET `
+	args := []interface{}{}
+	updates := []string{}
+
+	if req.Title != nil {
+		updates = append(updates, "title = ?")
+		args = append(args, *req.Title)
+	}
+	if req.Description != nil {
+		updates = append(updates, "description = ?")
+		args = append(args, *req.Description)
+	}
+	if req.Category != nil {
+		updates = append(updates, "category = ?")
+		args = append(args, *req.Category)
+	}
+	if req.Status != nil {
+		updates = append(updates, "status = ?")
+		args = append(args, *req.Status)
+	}
+
+	if len(updates) == 0 {
+		utils.RespondWithError(w, http.StatusBadRequest, "no fields to update")
+		return
+	}
+
+	query += (stringJoin(updates, ", ") + " WHERE id = ?")
+	args = append(args, id)
+
+	_, err := h.DB.Exec(query, args...)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found or update failed"})
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, item)
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report updated"})
 }
 
-// DELETE /reports/{reportId}
-func (h *Handler) Delete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("reportId"), 10, 64)
-	if err := h.repo.Delete(c, id); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+// DELETE /reports/{id}
+func (h *ReportsHandler) Delete(w http.ResponseWriter, r *http.Request, id string) {
+	_, err := h.DB.Exec(`DELETE FROM reports WHERE id = ?`, id)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.Status(http.StatusNoContent)
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report deleted"})
+}
+
+// Helper
+func stringJoin(arr []string, sep string) string {
+	if len(arr) == 0 {
+		return ""
+	}
+	out := arr[0]
+	for _, s := range arr[1:] {
+		out += sep + s
+	}
+	return out
 }
