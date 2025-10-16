@@ -1,9 +1,11 @@
 openapi: 3.1.0
 info:
   title: Whistle Blower API
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    REST API for Whistle Blower platform that supports anonymous reporting, evidence submission, case management, and admin configuration.
+    REST API for a Whistle Blower platform that supports anonymous reporting, 
+    optional user accounts, evidence submission, communication between reporter 
+    and investigator, analytics, and admin configuration.
 
 servers:
   - url: https://api.example.com/api/v1
@@ -27,7 +29,8 @@ paths:
   /auth/register:
     post:
       tags: [Auth]
-      summary: Register a new user
+      summary: Register a new user (optional)
+      description: Allows users to create an account for better tracking and communication, but registration is optional.
       requestBody:
         required: true
         content:
@@ -92,6 +95,7 @@ paths:
     post:
       tags: [Auth]
       summary: Logout user
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Logout successful }
 
@@ -129,7 +133,7 @@ paths:
   /users:
     get:
       tags: [Users]
-      summary: Get list of users (admin)
+      summary: Get list of users (admin only)
       security: [{ bearerAuth: [] }]
       responses:
         "200":
@@ -144,7 +148,8 @@ paths:
   /users/{userId}:
     get:
       tags: [Users]
-      summary: Get user by ID
+      summary: Get user by ID (admin only)
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -152,7 +157,8 @@ paths:
 
     patch:
       tags: [Users]
-      summary: Update user details
+      summary: Update user details (admin only)
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/userId"
       requestBody:
@@ -169,7 +175,8 @@ paths:
   /reports:
     get:
       tags: [Reports]
-      summary: Get all reports
+      summary: Get all reports (admin only)
+      security: [{ bearerAuth: [] }]
       parameters:
         - in: query
           name: status
@@ -188,7 +195,12 @@ paths:
 
     post:
       tags: [Reports]
-      summary: Create new report
+      summary: Submit a new report (anonymous or authenticated)
+      description: |
+        Submit a report anonymously or as a registered user.
+        - Anonymous users must provide an **email** to receive updates.
+        - Authenticated users' email is taken from their account.
+        Updates are automatically sent to the provided email.
       requestBody:
         required: true
         content:
@@ -196,20 +208,26 @@ paths:
             schema:
               $ref: "#/components/schemas/ReportCreate"
       responses:
-        "201": { description: Report created }
+        "201": { description: Report submitted successfully }
 
   /reports/my:
     get:
       tags: [Reports]
-      summary: Get reports submitted by current user
+      summary: Get reports submitted by authenticated user
+      description: |
+        Only available to registered users.
+        Anonymous reporters can track updates through their email instead.
       security: [{ bearerAuth: [] }]
       responses:
-        "200": { description: User's reports }
+        "200": { description: List of user's reports }
 
   /reports/{reportId}:
     get:
       tags: [Reports]
       summary: Get report details
+      description: |
+        Authenticated users can view their own reports.
+        Anonymous reporters can access limited info through email link tokens.
       parameters:
         - $ref: "#/components/parameters/reportId"
       responses:
@@ -217,24 +235,17 @@ paths:
 
     patch:
       tags: [Reports]
-      summary: Update report
+      summary: Update report (admin or investigator)
       parameters:
         - $ref: "#/components/parameters/reportId"
+      security: [{ bearerAuth: [] }]
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ReportUpdate"
       responses:
-        "200": { description: Report updated }
-
-    delete:
-      tags: [Reports]
-      summary: Delete report
-      parameters:
-        - $ref: "#/components/parameters/reportId"
-      responses:
-        "204": { description: Report deleted }
+        "200": { description: Report updated and email notifications sent }
 
   # ---------------------------
   # EVIDENCE
@@ -245,12 +256,24 @@ paths:
       summary: List evidence for a report
       parameters:
         - $ref: "#/components/parameters/reportId"
+      description: |
+        Available to the report owner (authenticated) or via secure email link for anonymous reporters.
       responses:
-        "200": { description: Evidence list }
+        "200":
+          description: Evidence list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Evidence"
 
     post:
       tags: [Evidence]
-      summary: Upload new evidence
+      summary: Upload evidence for a report
+      description: |
+        Both anonymous and authenticated users can upload evidence related to their report.
+        Anonymous upload requires a token sent to the reporter's email.
       parameters:
         - $ref: "#/components/parameters/reportId"
       requestBody:
@@ -261,26 +284,7 @@ paths:
               properties:
                 file: { type: string, format: binary }
       responses:
-        "201": { description: Evidence uploaded }
-
-  /reports/{reportId}/evidence/{evidenceId}:
-    get:
-      tags: [Evidence]
-      summary: Get evidence details
-      parameters:
-        - $ref: "#/components/parameters/reportId"
-        - $ref: "#/components/parameters/evidenceId"
-      responses:
-        "200": { description: Evidence details }
-
-    delete:
-      tags: [Evidence]
-      summary: Delete evidence
-      parameters:
-        - $ref: "#/components/parameters/reportId"
-        - $ref: "#/components/parameters/evidenceId"
-      responses:
-        "204": { description: Evidence deleted }
+        "201": { description: Evidence uploaded successfully }
 
   # ---------------------------
   # MESSAGES
@@ -288,7 +292,11 @@ paths:
   /reports/{reportId}/messages:
     get:
       tags: [Messages]
-      summary: Get messages for a report
+      summary: Get conversation messages related to a report
+      description: |
+        Authenticated users can access in-app chat.
+        Anonymous reporters will receive new messages as email notifications instead.
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/reportId"
       responses:
@@ -296,7 +304,11 @@ paths:
 
     post:
       tags: [Messages]
-      summary: Send new message in report chat
+      summary: Send a message in a report thread
+      description: |
+        Investigators and registered users can reply through the app.
+        Anonymous reporters reply through special email reply links.
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/reportId"
       requestBody:
@@ -306,7 +318,7 @@ paths:
             schema:
               $ref: "#/components/schemas/MessageCreate"
       responses:
-        "201": { description: Message sent }
+        "201": { description: Message sent and notifications distributed }
 
   # ---------------------------
   # ANALYTICS
@@ -314,42 +326,48 @@ paths:
   /analytics/overview:
     get:
       tags: [Analytics]
-      summary: Get dashboard overview
+      summary: Get dashboard overview (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Overview stats }
 
   /analytics/trends:
     get:
       tags: [Analytics]
-      summary: Get report trends
+      summary: Get report trends (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Trend data }
 
   /analytics/by-categories:
     get:
       tags: [Analytics]
-      summary: Reports grouped by categories
+      summary: Reports grouped by categories (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Category stats }
 
   /analytics/by-status:
     get:
       tags: [Analytics]
-      summary: Reports grouped by status
+      summary: Reports grouped by status (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Status stats }
 
   /analytics/investigator-performance:
     get:
       tags: [Analytics]
-      summary: Investigator performance metrics
+      summary: Investigator performance metrics (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Investigator data }
 
   /analytics/reports/generate:
     post:
       tags: [Analytics]
-      summary: Generate analytics report (PDF/Excel)
+      summary: Generate analytics report (PDF/Excel, admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Report generated }
 
@@ -365,7 +383,8 @@ paths:
 
     post:
       tags: [Admin Config]
-      summary: Create category
+      summary: Create category (admin only)
+      security: [{ bearerAuth: [] }]
       requestBody:
         content:
           application/json:
@@ -377,7 +396,8 @@ paths:
   /admin/config/categories/{catId}:
     patch:
       tags: [Admin Config]
-      summary: Update category
+      summary: Update category (admin only)
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/catId"
       responses:
@@ -385,7 +405,8 @@ paths:
 
     delete:
       tags: [Admin Config]
-      summary: Delete category
+      summary: Delete category (admin only)
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/catId"
       responses:
@@ -394,20 +415,23 @@ paths:
   /admin/config/roles:
     get:
       tags: [Admin Config]
-      summary: Get roles
+      summary: Get roles (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: List of roles }
 
     post:
       tags: [Admin Config]
-      summary: Create role
+      summary: Create role (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "201": { description: Role created }
 
   /admin/config/roles/{roleId}:
     patch:
       tags: [Admin Config]
-      summary: Update role
+      summary: Update role (admin only)
+      security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/roleId"
       responses:
@@ -417,31 +441,36 @@ paths:
     get:
       tags: [Admin Config]
       summary: Get global settings
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Settings retrieved }
 
     put:
       tags: [Admin Config]
-      summary: Update global settings
+      summary: Update global settings (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Settings updated }
 
   /admin/config/workflows:
     get:
       tags: [Admin Config]
-      summary: Get workflow configuration
+      summary: Get workflow configuration (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Workflow configuration retrieved }
 
     put:
       tags: [Admin Config]
-      summary: Update workflow configuration
+      summary: Update workflow configuration (admin only)
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Workflow configuration updated }
 
 # ---------------------------
 # COMPONENTS
 # ---------------------------
+
 components:
   securitySchemes:
     bearerAuth:
@@ -459,7 +488,9 @@ components:
       name: reportId
       in: path
       required: true
-      schema: { type: string }
+      schema:
+        type: integer
+        format: int64
     evidenceId:
       name: evidenceId
       in: path
@@ -480,11 +511,12 @@ components:
     User:
       type: object
       properties:
-        id: { type: string }
+        id: { type: string, format: uuid }
         name: { type: string }
         email: { type: string }
         role: { type: string }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
 
     UserUpdate:
       type: object
@@ -496,28 +528,76 @@ components:
     Report:
       type: object
       properties:
-        id: { type: string }
+        id:
+          type: integer
+          format: int64
+          description: Auto-incremented report ID
         title: { type: string }
         description: { type: string }
-        status: { type: string }
         category: { type: string }
+        status:
+          type: string
+          enum: [submitted, under_review, resolved, dismissed]
+        reporterType:
+          type: string
+          enum: [anonymous, authenticated]
+        email:
+          type: string
+          format: email
+          nullable: true
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
 
     ReportCreate:
       type: object
+      required: [title, description]
       properties:
         title: { type: string }
         description: { type: string }
         category: { type: string }
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: |
+            Optional email address for anonymous reporters to receive updates.
+        status:
+          type: string
+          enum: [submitted, under_review, resolved, dismissed]
+          default: submitted
+        reporterType:
+          type: string
+          enum: [anonymous, authenticated]
+          readOnly: true
 
     ReportUpdate:
       type: object
       properties:
-        status: { type: string }
+        status: { type: string, enum: [submitted, under_review, resolved, dismissed] }
         notes: { type: string }
+
+    Evidence:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reportId: { type: integer, format: int64 }
+        fileUrl: { type: string, format: uri }
+        fileName: { type: string }
+        uploadedBy: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Message:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reportId: { type: integer, format: int64 }
+        senderId: { type: string, nullable: true }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }
 
     MessageCreate:
       type: object
+      required: [message]
       properties:
         message: { type: string }
         attachments:
@@ -527,5 +607,8 @@ components:
     Category:
       type: object
       properties:
+        id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
