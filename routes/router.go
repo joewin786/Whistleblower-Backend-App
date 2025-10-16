@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"whistleblower_REST/internal/admin"
 	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/evidence"
 	"whistleblower_REST/internal/utils"
@@ -20,11 +21,12 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	authHandler := &auth.AuthHandler{DB: db}
 	authMiddleware := auth.AuthMiddleware()
-	
+
+	authHandler := &auth.AuthHandler{DB: db}
 	reportHandler := reports.NewHandler(db)
 	evidenceHandler := evidence.NewHandler(db)
+	categoryHandler := &admin.CategoryHandler{DB: db}
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -69,13 +71,12 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Post("/", reportHandler.Create)
 			r.Get("/{reportId}", reportHandler.GetByID)
 
-			r.Group (func(r chi.Router) {
+			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware)
 				r.Get("/my", reportHandler.GetMy)
 				r.Patch("/{reportId}", reportHandler.Update)
 				r.Delete("/{reportId}", reportHandler.Delete)
 			})
-			
 
 			// === EVIDENCE nested routes ===
 			r.Route("/{reportId}/evidence", func(r chi.Router) {
@@ -119,18 +120,10 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// ==== ADMIN CONFIG ====
 		r.Route("/admin/config", func(r chi.Router) {
-			r.Get("/categories", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "get categories"})
-			})
-			r.Post("/categories", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "create category"})
-			})
-			r.Patch("/categories/{catId}", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "update category"})
-			})
-			r.Delete("/categories/{catId}", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "delete category"})
-			})
+			r.Get("/categories", categoryHandler.GetAllCategories)
+			r.Post("/categories", categoryHandler.CreateCategory)
+			r.Patch("/categories/{catId}", categoryHandler.UpdateCategory)
+			r.Delete("/categories/{catId}", categoryHandler.DeleteCategory)
 
 			r.Get("/roles", func(w http.ResponseWriter, r *http.Request) {
 				utils.RespondWithJSON(w, 200, map[string]string{"message": "get roles"})
