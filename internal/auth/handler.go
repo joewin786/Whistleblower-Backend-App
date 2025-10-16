@@ -2,7 +2,9 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"time"
 	"whistleblower_REST/internal/utils"
 
 	"github.com/google/uuid"
@@ -24,13 +26,28 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-// Minimal User model for GORM usage within this package
+type LoginResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type MeResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type User struct {
-	ID        string `gorm:"primaryKey;type:text"`
-	Name      string `gorm:"not null"`
-	Email     string `gorm:"uniqueIndex;not null"`
-	Password  string `gorm:"not null"`
-	CreatedAt int64  `gorm:"autoCreateTime"`
+	ID        string    `gorm:"primaryKey;type:text" json:"id"`
+	Name      string    `gorm:"not null" json:"name"`
+	Email     string    `gorm:"uniqueIndex;not null" json:"email"`
+	Password  string    `gorm:"not null" json:"-"`
+	Role      string    `gorm:"default:user" json:"role"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +58,18 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashed, _ := HashFunction(input.Password)
+	var existing User
+	if err := h.DB.Where("email = ?", input.Email).First(&existing).Error; err == nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Email already registered")
+		return
+	}
+
+	hashed, err := HashFunction(input.Password)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
 	user := User{
 		ID:       uuid.NewString(),
 		Name:     input.Name,
@@ -62,6 +90,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	var user User
@@ -69,7 +98,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Select("id", "password").
 		Where("email = ?", input.Email).
 		First(&user).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			utils.RespondWithError(w, http.StatusBadRequest, "invalid credentials")
 			return
 		}
@@ -93,27 +122,29 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
+	utils.RespondWithJSON(w, http.StatusOK, LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 	})
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	id := r.Context().Value("id").(string)
-
-	var user struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Email string `json:"email"`
+	id, ok := r.Context().Value("id").(string)
+	if !ok || id == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
 	}
 
-	if err := h.DB.
+	var user MeResponse
+
+	err := h.DB.
 		Table("users").
-		Select("id", "name", "email").
+		Select("id", "name", "email", "role", "created_at", "updated_at").
 		Where("id = ?", id).
-		Take(&user).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		Take(&user).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			utils.RespondWithError(w, http.StatusNotFound, "user not found")
 			return
 		}
