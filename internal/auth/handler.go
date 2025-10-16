@@ -26,7 +26,11 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-type LoginResponse struct {
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 }
@@ -54,19 +58,19 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var input RegisterRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request body. Please provide valid JSON data.")
 		return
 	}
 
 	var existing User
 	if err := h.DB.Where("email = ?", input.Email).First(&existing).Error; err == nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Email already registered")
+		utils.RespondWithError(w, http.StatusBadRequest, "Email is already registered. Please use a different email.")
 		return
 	}
 
 	hashed, err := HashFunction(input.Password)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to hash password")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to process password. Please try again later.")
 		return
 	}
 
@@ -78,18 +82,20 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.DB.Create(&user).Error; err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+		utils.RespondWithError(w, http.StatusBadRequest, "Failed to create user account. Please try again.")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"message": "User registered successfully"})
+	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{
+		"message": "User registered successfully",
+	})
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var input LoginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request body. Please provide valid JSON data.")
 		return
 	}
 
@@ -99,30 +105,30 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Where("email = ?", input.Email).
 		First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			utils.RespondWithError(w, http.StatusBadRequest, "invalid credentials")
+			utils.RespondWithError(w, http.StatusBadRequest, "Invalid email or password.")
 			return
 		}
-		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+		utils.RespondWithError(w, http.StatusBadRequest, "An unexpected error occurred. Please try again.")
 		return
 	}
 
 	if !CheckPasswordHash(input.Password, user.Password) {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid password")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid email or password.")
 		return
 	}
 
 	accessToken, err := GenerateToken(user.ID)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate access token")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to generate access token.")
 		return
 	}
 	refreshToken, err := GenerateRefreshToken(user.ID)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate refresh token")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to generate refresh token.")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, LoginResponse{
+	utils.RespondWithJSON(w, http.StatusOK, TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
@@ -145,46 +151,42 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			utils.RespondWithError(w, http.StatusNotFound, "user not found")
+			utils.RespondWithError(w, http.StatusNotFound, "User not found.")
 			return
 		}
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to fetch user")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve user information.")
 		return
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, user)
 }
 
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req RefreshTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid request")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request body. Refresh token is required.")
 		return
 	}
 
 	id, err := ValidateRefreshToken(req.RefreshToken)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "invalid refresh token")
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid or expired refresh token.")
 		return
 	}
 
 	accessToken, err := GenerateToken(id)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate access token")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Invalid or expired refresh token.")
 		return
 	}
 	newRefreshToken, err := GenerateRefreshToken(id)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to generate refresh token")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to generate new refresh token.")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{
-		"access_token":  accessToken,
-		"refresh_token": newRefreshToken,
+	utils.RespondWithJSON(w, http.StatusOK, TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
 	})
 }
