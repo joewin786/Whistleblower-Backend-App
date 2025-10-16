@@ -67,11 +67,14 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
 			r.Post("/", reportHandler.Create)
-			r.Get("/", reportHandler.GetAll)
-			r.Get("/my", reportHandler.GetMy)
 			r.Get("/{reportId}", reportHandler.GetByID)
-			r.Patch("/{reportId}", reportHandler.Update)
-			r.Delete("/{reportId}", reportHandler.Delete)
+
+			r.Group (func(r chi.Router) {
+				r.Use(authMiddleware)
+				r.Get("/my", reportHandler.GetMy)
+				r.Patch("/{reportId}", reportHandler.Update)
+				r.Delete("/{reportId}", reportHandler.Delete)
+			})
 			
 
 			// === EVIDENCE nested routes ===
