@@ -210,6 +210,13 @@ paths:
       responses:
         "201": { description: Report submitted successfully }
 
+  /reports/categories:
+    get:
+      tags: [ Admin Config ]
+      summary: Get categories
+      responses:
+        "200": { description: Category list }
+
   /reports/my:
     get:
       tags: [Reports]
@@ -375,12 +382,6 @@ paths:
   # ADMIN CONFIG
   # ---------------------------
   /admin/config/categories:
-    get:
-      tags: [Admin Config]
-      summary: Get categories
-      responses:
-        "200": { description: Category list }
-
     post:
       tags: [Admin Config]
       summary: Create category (admin only)

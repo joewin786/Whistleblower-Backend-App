@@ -47,11 +47,6 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		})
 	})
 
-	// Public: admin config categories (no auth)
-	r.Route("/admin/config", func(r chi.Router) {
-		r.Get("/categories", categoryHandler.GetAllCategories)
-	})
-
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware)
@@ -75,6 +70,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		r.Route("/reports", func(r chi.Router) {
 			r.Post("/", reportHandler.Create)
 			r.Get("/{reportId}", reportHandler.GetByID)
+			r.Get("/categories", categoryHandler.GetAllCategories)
 
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware)
