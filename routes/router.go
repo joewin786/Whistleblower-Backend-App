@@ -47,6 +47,11 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		})
 	})
 
+	// Public: admin config categories (no auth)
+	r.Route("/admin/config", func(r chi.Router) {
+		r.Get("/categories", categoryHandler.GetAllCategories)
+	})
+
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware)
@@ -120,7 +125,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// ==== ADMIN CONFIG ====
 		r.Route("/admin/config", func(r chi.Router) {
-			r.Get("/categories", categoryHandler.GetAllCategories)
+			// Removed GET /categories here to keep it public above
 			r.Post("/categories", categoryHandler.CreateCategory)
 			r.Patch("/categories/{catId}", categoryHandler.UpdateCategory)
 			r.Delete("/categories/{catId}", categoryHandler.DeleteCategory)
