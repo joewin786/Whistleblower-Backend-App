@@ -3,10 +3,13 @@ package models
 import "time"
 
 type Evidence struct {
-	ID        string `gorm:"primaryKey;type:char(36)"`
-	ReportID  uint   `gorm:"index;not null"`
-	FilePath  string `gorm:"not null"`
-	FileName  string
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-	Report    Report    `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ReportID;references:ID"`
+	ID        string    `json:"id" gorm:"type:char(36);primaryKey"`
+	ReportID  string    `json:"report_id" gorm:"type:char(36);index"`
+	FilePath  string    `json:"file_path"`
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// optional kalau mau terima body JSON juga (selain path param)
+type CreateEvidenceRequest struct {
+	FilePath string `json:"file_path" binding:"required"`
 }

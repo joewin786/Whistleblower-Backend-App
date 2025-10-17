@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 	"whistleblower_REST/internal/utils"
+	"whistleblower_REST/internal/models"
 )
 
 type Handler struct {
@@ -19,11 +20,13 @@ type Handler struct {
 func NewHandler(db *gorm.DB) *Handler {return &Handler{DB: db}}
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	var in CreateReportRequest
+	var in models.CreateReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
+
+	// Validasi basic
 	in.Title = strings.TrimSpace(in.Title)
 	in.Description = strings.TrimSpace(in.Description)
 	if in.Title == "" || in.Description == "" {
@@ -31,44 +34,63 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ambil ID user dari context (jika login)
 	var uid string
-	if v := r.Context().Value("uid"); v != nil {
-		if s, ok := v.(string); ok {
-			uid = s
-		}
+	v := r.Context().Value("id")
+	if idStr, ok := v.(string); ok && idStr != "" {
+		uid = idStr
 	}
 
-	reporterType := ReporterAnonymous
+	// Default: anonymous
+	reporterType := models.ReporterAnonymous
 	var userID *string
 	if uid != "" {
-		reporterType = ReporterAuthenticated
+		reporterType = models.ReporterAuthenticated
 		userID = &uid
-		in.Email = nil
+		in.Email = nil // abaikan email kalau user login
 	}
 
-	rp := Report{
-		Title: in.Title,
-		Description: in.Description,
-		Category: in.Category,
-		Status: StatusSubmitted,
+	var admin models.User
+	if err := h.DB.Where("role = ?", "admin").First(&admin).Error; err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "No admin available to assign")
+		return
+	}
+
+	report := models.Report{
+		Title:        in.Title,
+		Description:  in.Description,
+		Category:     in.Category,
+		Status:       models.StatusSubmitted,
 		ReporterType: reporterType,
-		UserID: userID,
-		Email: in.Email,
+		UserID:       userID,
+		Email:        in.Email,
+		AssignedAdminID: &admin.ID,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
-	if err := h.DB.Create(&rp).Error; err != nil {
+	if err := h.DB.Create(&report).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	utils.RespondWithJSON(w, http.StatusCreated, rp)
+
+	utils.RespondWithJSON(w, http.StatusCreated, map[string]any{
+		"message":       "report created successfully",
+		"assignedAdmin": map[string]string{
+			"id":   admin.ID,
+			"name": admin.Name,
+			"email": admin.Email,
+		},
+		"report": report,
+	})
 }
 
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
 
-	var list []Report
-	tx := h.DB.Model(&Report{})
+	var list []models.Report
+	tx := h.DB.Model(&models.Report{})
 	if status != "" {
 		tx = tx.Where("status = ?", status)
 	}
@@ -83,13 +105,13 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
-	v := r.Context().Value("uid")
+	v := r.Context().Value("id")
 	uid, _ := v.(string)
 	if uid == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	var list []Report
+	var list []models.Report
 	if err := h.DB.Where("user_id = ?", uid).Order("created_at DESC").Find(&list).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -105,7 +127,7 @@ func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid report id")
 		return
 	}
-	var rp Report
+	var rp models.Report
 	if err := h.DB.First(&rp, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			utils.RespondWithError(w, http.StatusNotFound, "report not found")
@@ -117,15 +139,14 @@ func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, rp)
 }
 
-// PATCH /reports/{reportId}
-// Hanya update Status (sesuai OpenAPI). updated_at otomatis oleh GORM.
+
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseUintID(chi.URLParam(r, "reportId"))
 	if !ok {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid report id")
 		return
 	}
-	var in UpdateReportRequest
+	var in models.UpdateReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
@@ -146,7 +167,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := h.DB.Model(&Report{}).Where("id = ?", id).Updates(updates)
+	res := h.DB.Model(&models.Report{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
 		return
@@ -165,7 +186,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid report id")
 		return
 	}
-	res := h.DB.Delete(&Report{}, "id = ?", id)
+	res := h.DB.Delete(&models.Report{}, "id = ?", id)
 	if res.Error != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
 		return
@@ -192,7 +213,7 @@ func parseUintID(s string) (uint, bool) {
 
 func isValidStatus(st string) bool {
 	switch st {
-	case StatusSubmitted, StatusUnderReview, StatusResolved, StatusDismissed:
+	case models.StatusSubmitted, models.StatusUnderReview, models.StatusResolved, models.StatusDismissed:
 		return true
 	default:
 		return false

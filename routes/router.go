@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm"
 
 	"whistleblower_REST/internal/reports"
+	"whistleblower_REST/internal/messages"
+	
 )
 
 func RegisterRoutes(db *gorm.DB) *chi.Mux {
@@ -27,6 +29,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 	reportHandler := reports.NewHandler(db)
 	evidenceHandler := evidence.NewHandler(db)
 	categoryHandler := &admin.CategoryHandler{DB: db}
+	messageHandler := messages.NewHandler(db)
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -42,7 +45,6 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// protected: /auth/me
 		r.Group(func(r chi.Router) {
-			r.Use(authMiddleware)
 			r.Get("/me", authHandler.Me)
 		})
 	})
@@ -68,12 +70,13 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
-			r.Post("/", reportHandler.Create)
 			r.Get("/{reportId}", reportHandler.GetByID)
+			r.Get("/{reportId}/messages", messageHandler.GetByReportID)
 			r.Get("/categories", categoryHandler.GetAllCategories)
 
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware)
+				r.Post("/", reportHandler.Create)
 				r.Get("/my", reportHandler.GetMy)
 				r.Patch("/{reportId}", reportHandler.Update)
 				r.Delete("/{reportId}", reportHandler.Delete)
@@ -88,11 +91,9 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 			// === MESSAGES nested routes ===
 			r.Route("/{reportId}/messages", func(r chi.Router) {
-				r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-					utils.RespondWithJSON(w, 200, map[string]string{"message": "get messages"})
-				})
-				r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-					utils.RespondWithJSON(w, 200, map[string]string{"message": "create message"})
+				
+				r.Group(func(r chi.Router) {
+					r.Post("/", messageHandler.Create)
 				})
 			})
 		})

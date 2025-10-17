@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"whistleblower_REST/internal/utils"
+	"whistleblower_REST/internal/models"
 )
 
 type Handler struct {
@@ -19,7 +20,7 @@ func NewHandler(db *gorm.DB) *Handler { return &Handler{DB: db} }
 // GET /reports/{reportId}/evidence
 func (h *Handler) GetByReport(w http.ResponseWriter, r *http.Request) {
 	reportID := chi.URLParam(r, "reportId")
-	var list []Evidence
+	var list []models.Evidence
 	if err := h.DB.Where("report_id = ?", reportID).Order("created_at DESC").Find(&list).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -31,13 +32,13 @@ func (h *Handler) GetByReport(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	reportID := chi.URLParam(r, "reportId")
 
-	var in CreateEvidenceRequest
+	var in models.CreateEvidenceRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	ev := &Evidence{
+	ev := &models.Evidence{
 		ID:       uuid.NewString(),
 		ReportID: reportID,
 		FilePath: in.FilePath,
@@ -53,7 +54,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 // DELETE /reports/{reportId}/evidence/{evidenceId}
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	evidenceID := chi.URLParam(r, "evidenceId")
-	res := h.DB.Delete(&Evidence{}, "id = ?", evidenceID)
+	res := h.DB.Delete(&models.Evidence{}, "id = ?", evidenceID)
 	if res.Error != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
 		return
