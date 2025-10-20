@@ -202,14 +202,13 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := ValidateToken(req.Token)
+	_, err := ValidateToken(req.Token)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid or expired token.")
 		return
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"valid":  true,
-		"userId": userID,
+		"valid": true,
 	})
 }
