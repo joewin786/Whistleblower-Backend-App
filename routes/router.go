@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 	"whistleblower_REST/internal/admin"
+	"whistleblower_REST/internal/analytics"
 	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/evidence"
 	"whistleblower_REST/internal/utils"
@@ -29,6 +30,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 	evidenceHandler := evidence.NewHandler(db)
 	categoryHandler := &admin.CategoryHandler{DB: db}
 	messageHandler := messages.NewHandler(db)
+	analyticsHandler := &analytics.AnalyticsHandler{DB: db}
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -49,12 +51,16 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		})
 	})
 
+	
+
+
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {
-		r.Use(authMiddleware)
+		
 
 		// ==== USERS ====
 		r.Route("/users", func(r chi.Router) {
+			r.Use(authMiddleware)
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				utils.RespondWithJSON(w, 200, map[string]string{"message": "get all users"})
 			})
@@ -73,13 +79,15 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Get("/{reportId}", reportHandler.GetByID)
 			r.Get("/{reportId}/messages", messageHandler.GetByReportID)
 			r.Get("/categories", categoryHandler.GetAllCategories)
+			r.Post("/", reportHandler.Create)                 // publik bisa kirim laporan
+			r.Put("/{reportId}/assign", reportHandler.AssignAdmin) // publik bisa assign admin (dengan email wajib)
 
+	// --- Protected routes (login required) ---
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware)
-				r.Post("/", reportHandler.Create)
-				r.Get("/my", reportHandler.GetMy)
-				r.Patch("/{reportId}", reportHandler.Update)
-				r.Delete("/{reportId}", reportHandler.Delete)
+				r.Get("/my", reportHandler.GetMy)             // laporan user login
+				r.Patch("/{reportId}", reportHandler.Update)  // update status
+				r.Delete("/{reportId}", reportHandler.Delete) // hapus laporan
 			})
 
 			// === EVIDENCE nested routes ===
@@ -100,28 +108,18 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// ==== ANALYTICS ====
 		r.Route("/analytics", func(r chi.Router) {
-			r.Get("/overview", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "analytics overview"})
-			})
-			r.Get("/trends", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "analytics trends"})
-			})
-			r.Get("/by-categories", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "analytics by categories"})
-			})
-			r.Get("/by-status", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "analytics by status"})
-			})
-			r.Get("/investigator-performance", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "analytics performance"})
-			})
-			r.Post("/reports/generate", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "generate report"})
-			})
+			r.Use(authMiddleware)
+			r.With(auth.AuthMiddleware()).Get("/overview", analyticsHandler.GetOverview)
+			r.With(auth.AuthMiddleware()).Get("/trends", analyticsHandler.GetTrends)
+			r.With(auth.AuthMiddleware()).Get("/by-categories", analyticsHandler.GetByCategories)
+			r.With(auth.AuthMiddleware()).Get("/by-status", analyticsHandler.GetByStatus)
+			r.With(auth.AuthMiddleware()).Get("/	", analyticsHandler.GetInvestigatorPerformance)
+			r.With(auth.AuthMiddleware()).Post("/reports/generate", analyticsHandler.GenerateReport)
 		})
 
 		// ==== ADMIN CONFIG ====
 		r.Route("/admin/config", func(r chi.Router) {
+			r.Use(authMiddleware)
 			// Removed GET /categories here to keep it public above
 			r.Post("/categories", categoryHandler.CreateCategory)
 			r.Patch("/categories/{catId}", categoryHandler.UpdateCategory)

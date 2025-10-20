@@ -21,10 +21,12 @@ type Report struct {
 	Status       string    `json:"status"        gorm:"default:submitted;index"`
 	ReporterType string    `json:"reporterType"  gorm:"not null;default:anonymous"`
 	Email        *string   `json:"email,omitempty" gorm:"type:text"`
-	AssignedAdminID *string   `json:"assignedAdminID,omitempty" gorm:"type:char(36);index"`
+	AssignedAdminID *string  `json:"assignedAdminID,omitempty" gorm:"type:char(36);index"` // ✅ ini penting!
+	AssignedAdmin   *User   `json:"assignedAdmin,omitempty" gorm:"foreignKey:AssignedAdminID;references:ID"`
 	CreatedAt    time.Time `json:"createdAt"     gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updatedAt"     gorm:"autoUpdateTime"`
-	User         User      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;references:ID"`
+	User *User `json:"user,omitempty" gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;references:ID"`
+
 }
 
 

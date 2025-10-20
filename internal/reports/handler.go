@@ -2,23 +2,28 @@ package reports
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"whistleblower_REST/internal/models"
+	"whistleblower_REST/internal/utils"
+
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
-	"whistleblower_REST/internal/utils"
-	"whistleblower_REST/internal/models"
 )
 
 type Handler struct {
 	DB *gorm.DB
 }
 
-func NewHandler(db *gorm.DB) *Handler {return &Handler{DB: db}}
+func NewHandler(db *gorm.DB) *Handler { return &Handler{DB: db} }
 
+// ==============================
+// CREATE REPORT
+// ==============================
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in models.CreateReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -48,12 +53,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		reporterType = models.ReporterAuthenticated
 		userID = &uid
 		in.Email = nil // abaikan email kalau user login
-	}
-
-	var admin models.User
-	if err := h.DB.Where("role = ?", "admin").First(&admin).Error; err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "No admin available to assign")
-		return
+	} else {
+		// Email wajib jika user tidak login
+		if in.Email == nil || strings.TrimSpace(*in.Email) == "" {
+			utils.RespondWithError(w, http.StatusBadRequest, "email is required for anonymous reports")
+			return
+		}
 	}
 
 	report := models.Report{
@@ -64,7 +69,6 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		ReporterType: reporterType,
 		UserID:       userID,
 		Email:        in.Email,
-		AssignedAdminID: &admin.ID,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -74,17 +78,21 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Log simulasi kirim email
+	if report.Email != nil {
+		fmt.Printf("[INFO] Simulasi kirim email ke %s (Laporan ID #%d, Status: %s)\n",
+			*report.Email, report.ID, report.Status)
+	}
+
 	utils.RespondWithJSON(w, http.StatusCreated, map[string]any{
-		"message":       "report created successfully",
-		"assignedAdmin": map[string]string{
-			"id":   admin.ID,
-			"name": admin.Name,
-			"email": admin.Email,
-		},
-		"report": report,
+		"message": "report created successfully",
+		"report":  report,
 	})
 }
 
+// ==============================
+// GET ALL REPORTS (admin only)
+// ==============================
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
@@ -104,6 +112,9 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, list)
 }
 
+// ==============================
+// GET USER'S OWN REPORTS
+// ==============================
 func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
 	v := r.Context().Value("id")
 	uid, _ := v.(string)
@@ -111,22 +122,25 @@ func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+
 	var list []models.Report
 	if err := h.DB.Where("user_id = ?", uid).Order("created_at DESC").Find(&list).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	utils.RespondWithJSON(w, http.StatusOK, list)
-
 }
 
-
-	func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
+// ==============================
+// GET REPORT BY ID
+// ==============================
+func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseUintID(chi.URLParam(r, "reportId"))
 	if !ok {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid report id")
 		return
 	}
+
 	var rp models.Report
 	if err := h.DB.First(&rp, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -136,16 +150,20 @@ func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	utils.RespondWithJSON(w, http.StatusOK, rp)
 }
 
-
+// ==============================
+// UPDATE REPORT STATUS
+// ==============================
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseUintID(chi.URLParam(r, "reportId"))
 	if !ok {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid report id")
 		return
 	}
+
 	var in models.UpdateReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
@@ -162,7 +180,8 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		updates["status"] = *in.Status
 	}
-	if len(updates) == 1 { // hanya updated_at terisi
+
+	if len(updates) == 1 {
 		utils.RespondWithError(w, http.StatusBadRequest, "no updatable fields provided")
 		return
 	}
@@ -176,16 +195,90 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusNotFound, "report not found")
 		return
 	}
+
+	fmt.Printf("[INFO] Status laporan #%d diperbarui menjadi %v\n", id, in.Status)
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report updated"})
 }
 
-// DELETE /reports/{reportId} (opsional; kalau router kamu pakai)
+// ==============================
+// ASSIGN ADMIN TO REPORT (public allowed)
+// ==============================
+func (h *Handler) AssignAdmin(w http.ResponseWriter, r *http.Request) {
+	reportID, ok := parseUintID(chi.URLParam(r, "reportId"))
+	if !ok {
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid report id")
+		return
+	}
+
+	var body struct {
+		AdminID string  `json:"admin_id"`
+		Email   *string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validasi email wajib untuk publik
+	if body.Email == nil || strings.TrimSpace(*body.Email) == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "email is required for public assignment")
+		return
+	}
+
+	// Validasi admin
+	var admin models.User
+	if err := h.DB.Where("id = ? AND role = ?", body.AdminID, "admin").First(&admin).Error; err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "invalid admin id")
+		return
+	}
+
+	// Cek report
+	var report models.Report
+	if err := h.DB.First(&report, reportID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.RespondWithError(w, http.StatusNotFound, "report not found")
+			return
+		}
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	updates := map[string]any{
+		"assigned_admin_id": admin.ID,
+		"email":             body.Email,
+		"status":            models.StatusUnderReview,
+		"updated_at":        time.Now(),
+	}
+
+	if err := h.DB.Model(&models.Report{}).Where("id = ?", reportID).Updates(updates).Error; err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Simulasi kirim notifikasi
+	fmt.Printf("[INFO] Admin %s (%s) ditugaskan ke laporan #%d (notifikasi seharusnya ke %s)\n",
+		admin.Name, admin.Email, report.ID, *body.Email)
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]any{
+		"message": "report assigned successfully",
+		"assignedAdmin": map[string]string{
+			"id":    admin.ID,
+			"name":  admin.Name,
+			"email": admin.Email,
+		},
+	})
+}
+
+// ==============================
+// DELETE REPORT
+// ==============================
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseUintID(chi.URLParam(r, "reportId"))
 	if !ok {
 		utils.RespondWithError(w, http.StatusBadRequest, "invalid report id")
 		return
 	}
+
 	res := h.DB.Delete(&models.Report{}, "id = ?", id)
 	if res.Error != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
@@ -195,11 +288,13 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusNotFound, "report not found")
 		return
 	}
+
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report deleted"})
 }
 
-// === helpers ===
-
+// ==============================
+// HELPERS
+// ==============================
 func parseUintID(s string) (uint, bool) {
 	if s == "" {
 		return 0, false
