@@ -11,9 +11,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"gorm.io/gorm"
 
-	"whistleblower_REST/internal/reports"
 	"whistleblower_REST/internal/messages"
-	
+	"whistleblower_REST/internal/reports"
 )
 
 func RegisterRoutes(db *gorm.DB) *chi.Mux {
@@ -36,6 +35,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		r.Post("/register", authHandler.Register)
 		r.Post("/login", authHandler.Login)
 		r.Post("/refresh", authHandler.Refresh)
+		r.Post("/validate", authHandler.ValidateToken)
 		r.Post("/logout", func(w http.ResponseWriter, r *http.Request) {
 			utils.RespondWithJSON(w, 200, map[string]string{"message": "logout"})
 		})
@@ -91,7 +91,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 			// === MESSAGES nested routes ===
 			r.Route("/{reportId}/messages", func(r chi.Router) {
-				
+
 				r.Group(func(r chi.Router) {
 					r.Post("/", messageHandler.Create)
 				})

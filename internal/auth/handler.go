@@ -30,6 +30,10 @@ type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type ValidateTokenRequest struct {
+	Token string `json:"token"`
+}
+
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -188,5 +192,24 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
+	})
+}
+
+func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
+	var req ValidateTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request body. Token is required.")
+		return
+	}
+
+	userID, err := ValidateToken(req.Token)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid or expired token.")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"valid":  true,
+		"userId": userID,
 	})
 }
