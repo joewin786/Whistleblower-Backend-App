@@ -27,16 +27,17 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func GenerateToken(id string) (string, error) {
+func GenerateToken(id string, role string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":  id,
-		"typ": "access",
-		"exp": time.Now().Add(time.Hour * 72).Unix(),
+		"id":   id,
+		"role": role,
+		"typ":  "access",
+		"exp":  time.Now().Add(time.Hour * 72).Unix(),
 	})
 	return token.SignedString(jwtSecret)
 }
 
-func ValidateToken(tokenString string) (string, error) {
+func ValidateToken(tokenString string) (string, string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("invalid signing method")
@@ -44,18 +45,21 @@ func ValidateToken(tokenString string) (string, error) {
 		return jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		return "", errors.New("invalid token")
+		return "", "", errors.New("invalid token")
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		typ, _ := claims["typ"].(string)
 		if typ != "access" {
-			return "", errors.New("invalid token type")
+			return "", "", errors.New("invalid token type")
 		}
-		if id, ok := claims["id"].(string); ok {
-			return id, nil
+		id, _ := claims["id"].(string)
+		role, _ := claims["role"].(string)
+		if id == "" || role == "" {
+			return "", "", errors.New("invalid token claims")
 		}
+		return id, role, nil
 	}
-	return "", errors.New("invalid token claims")
+	return "", "", errors.New("invalid token claims")
 }
 
 func GenerateRefreshToken(id string) (string, error) {

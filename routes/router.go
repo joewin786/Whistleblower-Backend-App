@@ -106,17 +106,19 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		// ==== ANALYTICS ====
 		r.Route("/analytics", func(r chi.Router) {
 			r.Use(authMiddleware)
-			r.With(auth.AuthMiddleware()).Get("/overview", analyticsHandler.GetOverview)
-			r.With(auth.AuthMiddleware()).Get("/trends", analyticsHandler.GetTrends)
-			r.With(auth.AuthMiddleware()).Get("/by-categories", analyticsHandler.GetByCategories)
-			r.With(auth.AuthMiddleware()).Get("/by-status", analyticsHandler.GetByStatus)
-			r.With(auth.AuthMiddleware()).Get("/	", analyticsHandler.GetInvestigatorPerformance)
-			r.With(auth.AuthMiddleware()).Post("/reports/generate", analyticsHandler.GenerateReport)
+			r.Use(auth.RoleMiddleware("admin"))
+			r.Get("/overview", analyticsHandler.GetOverview)
+			r.Get("/trends", analyticsHandler.GetTrends)
+			r.Get("/by-categories", analyticsHandler.GetByCategories)
+			r.Get("/by-status", analyticsHandler.GetByStatus)
+			r.Get("/\t", analyticsHandler.GetInvestigatorPerformance)
+			r.Post("/reports/generate", analyticsHandler.GenerateReport)
 		})
 
 		// ==== ADMIN CONFIG ====
 		r.Route("/admin/config", func(r chi.Router) {
 			r.Use(authMiddleware)
+			r.Use(auth.RoleMiddleware("admin"))
 			// Removed GET /categories here to keep it public above
 			r.Post("/categories", categoryHandler.CreateCategory)
 			r.Patch("/categories/{catId}", categoryHandler.UpdateCategory)

@@ -82,6 +82,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		ID:       uuid.NewString(),
 		Name:     input.Name,
 		Email:    input.Email,
+		Role:     "user",
 		Password: hashed,
 	}
 
@@ -105,7 +106,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var user User
 	if err := h.DB.
-		Select("id", "password").
+		Select("id", "password", "role").
 		Where("email = ?", input.Email).
 		First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -121,7 +122,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := GenerateToken(user.ID)
+	accessToken, err := GenerateToken(user.ID, user.Role)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to generate access token.")
 		return
@@ -178,7 +179,13 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := GenerateToken(id)
+	var u User
+	if err := h.DB.Select("role").Where("id = ?", id).First(&u).Error; err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to fetch user role.")
+		return
+	}
+
+	accessToken, err := GenerateToken(id, u.Role)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Invalid or expired refresh token.")
 		return
@@ -202,7 +209,7 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := ValidateToken(req.Token)
+	_, _, err := ValidateToken(req.Token)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusUnauthorized, "Invalid or expired token.")
 		return
