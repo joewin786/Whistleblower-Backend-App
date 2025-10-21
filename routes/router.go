@@ -47,16 +47,13 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// protected: /auth/me
 		r.Group(func(r chi.Router) {
+			r.Use(authMiddleware)
 			r.Get("/me", authHandler.Me)
 		})
 	})
 
-	
-
-
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {
-		
 
 		// ==== USERS ====
 		r.Route("/users", func(r chi.Router) {
@@ -79,10 +76,10 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Get("/{reportId}", reportHandler.GetByID)
 			r.Get("/{reportId}/messages", messageHandler.GetByReportID)
 			r.Get("/categories", categoryHandler.GetAllCategories)
-			r.Post("/", reportHandler.Create)                 // publik bisa kirim laporan
+			r.Post("/", reportHandler.Create)                      // publik bisa kirim laporan
 			r.Put("/{reportId}/assign", reportHandler.AssignAdmin) // publik bisa assign admin (dengan email wajib)
 
-	// --- Protected routes (login required) ---
+			// --- Protected routes (login required) ---
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware)
 				r.Get("/my", reportHandler.GetMy)             // laporan user login
