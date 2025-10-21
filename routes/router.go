@@ -58,6 +58,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		// ==== USERS ====
 		r.Route("/users", func(r chi.Router) {
 			r.Use(authMiddleware)
+			r.Use(auth.RoleMiddleware("admin"))
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				utils.RespondWithJSON(w, 200, map[string]string{"message": "get all users"})
 			})
