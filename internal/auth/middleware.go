@@ -31,6 +31,30 @@ func AuthMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// OptionalAuthMiddleware injects user id and role when a valid token is present; otherwise passes through
+func OptionalAuthMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if strings.TrimSpace(authHeader) == "" {
+				// No token provided: proceed anonymously
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Token provided: validate
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			id, role, err := ValidateToken(token)
+			if err != nil {
+				utils.RespondWithError(w, http.StatusUnauthorized, "invalid token")
+				return
+			}
+			ctx := context.WithValue(r.Context(), "id", id)
+			ctx = context.WithValue(ctx, "role", role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // RoleMiddleware restricts access to users with one of the allowed roles
 func RoleMiddleware(allowedRoles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(allowedRoles))
