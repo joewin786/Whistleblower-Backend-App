@@ -98,10 +98,9 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 			// === MESSAGES nested routes ===
 			r.Route("/{reportId}/messages", func(r chi.Router) {
+				r.Get("/", messageHandler.GetByReportID)
 
-				r.Group(func(r chi.Router) {
-					r.Post("/", messageHandler.Create)
-				})
+				r.With(authMiddleware).Post("/", messageHandler.Create)
 			})
 		})
 
