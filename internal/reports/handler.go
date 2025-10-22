@@ -84,10 +84,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			*report.Email, report.ID, report.Status)
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]any{
-		"message": "report created successfully",
-		"report":  report,
-	})
+	utils.RespondWithJSON(w, http.StatusCreated, report)
 }
 
 // ==============================

@@ -93,6 +93,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 				r.Get("/", evidenceHandler.GetByReport)
 				r.Post("/", evidenceHandler.Create)
 				r.Delete("/{evidenceId}", evidenceHandler.Delete)
+				r.Get("/file/{id}", evidenceHandler.DownloadEvidence)
 			})
 
 			// === MESSAGES nested routes ===
