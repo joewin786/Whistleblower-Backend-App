@@ -31,6 +31,9 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 	categoryHandler := &admin.CategoryHandler{DB: db}
 	messageHandler := messages.NewHandler(db)
 	analyticsHandler := &analytics.AnalyticsHandler{DB: db}
+	roleHandler := &admin.RoleHandler{DB: db}
+	settingsHandler := &admin.SettingsHandler{DB: db}
+	workflowHandler := &admin.WorkflowHandler{DB: db}
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -125,29 +128,18 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Patch("/categories/{catId}", categoryHandler.UpdateCategory)
 			r.Delete("/categories/{catId}", categoryHandler.DeleteCategory)
 
-			r.Get("/roles", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "get roles"})
-			})
-			r.Post("/roles", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "create role"})
-			})
-			r.Patch("/roles/{roleId}", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "update role"})
-			})
+			// Roles
+			r.Get("/roles", roleHandler.GetRoles)
+			r.Post("/roles", roleHandler.CreateRole)
+			r.Patch("/roles/{roleId}", roleHandler.UpdateRole)
 
-			r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "get settings"})
-			})
-			r.Put("/settings", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "update settings"})
-			})
+			// Setting
+			r.Get("/settings", settingsHandler.GetSettings)
+			r.Put("/settings", settingsHandler.UpdateSettings)
 
-			r.Get("/workflows", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "get workflows"})
-			})
-			r.Put("/workflows", func(w http.ResponseWriter, r *http.Request) {
-				utils.RespondWithJSON(w, 200, map[string]string{"message": "update workflows"})
-			})
+			// Workflows
+			r.Get("/workflows", workflowHandler.GetWorkflows)
+			r.Put("/workflows", workflowHandler.UpdateWorkflows)
 		})
 	})
 
