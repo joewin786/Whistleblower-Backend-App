@@ -34,6 +34,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 	roleHandler := &admin.RoleHandler{DB: db}
 	settingsHandler := &admin.SettingsHandler{DB: db}
 	workflowHandler := &admin.WorkflowHandler{DB: db}
+	actionHandler := &admin.ActionHandler{DB: db}
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -140,6 +141,12 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			// Workflows
 			r.Get("/workflows", workflowHandler.GetWorkflows)
 			r.Put("/workflows", workflowHandler.UpdateWorkflows)
+
+			// Actions
+			r.Route("/actions", func(r chi.Router) {
+				r.Post("/{reportId}", actionHandler.CreateAction)  // Buat tindakan untuk report tertentu
+				r.Get("/{reportId}", actionHandler.GetActionsByReport) // Ambil semua tindakan untuk report
+	})
 		})
 	})
 

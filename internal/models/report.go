@@ -26,7 +26,7 @@ type Report struct {
 	CreatedAt    time.Time `json:"createdAt"     gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updatedAt"     gorm:"autoUpdateTime"`
 	User *User `json:"user,omitempty" gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;references:ID"`
-
+	Actions       []Action   `json:"actions" gorm:"foreignKey:ReportID;constraint:OnDelete:CASCADE;"`
 }
 
 
