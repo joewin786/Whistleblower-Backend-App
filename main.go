@@ -9,6 +9,7 @@ import (
 	"whistleblower_REST/routes"
 
 	"github.com/joho/godotenv"
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -30,15 +31,28 @@ func main() {
 	// Setup router with GORM DB
 	r := routes.RegisterRoutes(db)
 
-	// Run the server
+	// ✅ Tambahkan middleware CORS
+	c := cors.New(cors.Options{
+		AllowedOrigins: []string{
+			"http://localhost:3000",
+			"http://192.168.150.152:3000",
+		},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowCredentials: true,
+	})
+
+	handler := c.Handler(r)
+
+	// Jalankan server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	addr := fmt.Sprintf(":%s", port)
+	addr := fmt.Sprintf("0.0.0.0:%s", port) 
 
-	log.Printf("🚀 Server running on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
+	log.Printf("🚀 Server running on http://%s", addr)
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("❌ Server failed: %v", err)
 	}
 }
