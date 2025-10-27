@@ -41,7 +41,7 @@ func (h *AnalyticsHandler) GetTrends(w http.ResponseWriter, r *http.Request) {
 		Order("month ASC").
 		Scan(&rows)
 
-	var trends []models.TrendData
+	trends := []models.TrendData{} // ✅ supaya tidak nil
 	for _, r := range rows {
 		trends = append(trends, models.TrendData{
 			Month: r.Month,
@@ -51,6 +51,7 @@ func (h *AnalyticsHandler) GetTrends(w http.ResponseWriter, r *http.Request) {
 
 	utils.RespondWithJSON(w, http.StatusOK, trends)
 }
+
 
 // ✅ GET /analytics/by-categories
 func (h *AnalyticsHandler) GetByCategories(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +103,6 @@ func (h *AnalyticsHandler) GetByStatus(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, stats)
 }
 
-// ✅ GET /analytics/investigator-performance
 func (h *AnalyticsHandler) GetInvestigatorPerformance(w http.ResponseWriter, r *http.Request) {
 	type result struct {
 		InvestigatorID   uint
@@ -127,7 +127,7 @@ func (h *AnalyticsHandler) GetInvestigatorPerformance(w http.ResponseWriter, r *
 		Order("handled_reports DESC").
 		Scan(&rows)
 
-	var data []models.InvestigatorPerformance
+	data := []models.InvestigatorPerformance{} // ✅ inisialisasi
 	for _, r := range rows {
 		avgTime := "-"
 		if r.AvgResponseHours != nil {
@@ -144,6 +144,8 @@ func (h *AnalyticsHandler) GetInvestigatorPerformance(w http.ResponseWriter, r *
 
 	utils.RespondWithJSON(w, http.StatusOK, data)
 }
+
+
 
 // ✅ POST /analytics/reports/generate
 func (h *AnalyticsHandler) GenerateReport(w http.ResponseWriter, r *http.Request) {
