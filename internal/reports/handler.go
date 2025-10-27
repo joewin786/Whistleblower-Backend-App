@@ -170,6 +170,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	updates := map[string]any{
 		"updated_at": time.Now(),
 	}
+
 	if in.Status != nil {
 		if !isValidStatus(*in.Status) {
 			utils.RespondWithError(w, http.StatusBadRequest, "invalid status value")
@@ -183,6 +184,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// === Update report status ===
 	res := h.DB.Model(&models.Report{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
@@ -193,9 +195,19 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// === Jika status berubah jadi 'under_review', set handle_at di tabel actions ===
+	if in.Status != nil && *in.Status == models.StatusUnderReview {
+		now := time.Now()
+		h.DB.Model(&models.Action{}).
+			Where("report_id = ?", id).
+			Update("handle_at", now)
+		fmt.Printf("[INFO] Laporan #%d mulai ditangani pada %s\n", id, now.Format(time.RFC3339))
+	}
+
 	fmt.Printf("[INFO] Status laporan #%d diperbarui menjadi %v\n", id, in.Status)
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report updated"})
 }
+
 
 // ==============================
 // ASSIGN ADMIN TO REPORT (public allowed)
