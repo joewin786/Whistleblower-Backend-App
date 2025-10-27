@@ -7,6 +7,7 @@ import (
 	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/evidence"
 	"whistleblower_REST/internal/utils"
+	"whistleblower_REST/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -18,6 +19,9 @@ import (
 
 func RegisterRoutes(db *gorm.DB) *chi.Mux {
 	r := chi.NewRouter()
+
+	hub := websocket.NewHub()
+	wsHandler := websocket.NewWSHandler(db, hub)
 
 	// === Global middleware ===
 	r.Use(middleware.Logger)
@@ -58,6 +62,11 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {
+
+		r.Route("/ws/reports", func(r chi.Router) {
+			r.Use(authMiddleware)
+			r.Get("/{reportId}", wsHandler.HandleConnections)
+		})
 
 		// ==== USERS ====
 		r.Route("/users", func(r chi.Router) {
@@ -144,9 +153,9 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 			// Actions
 			r.Route("/actions", func(r chi.Router) {
-				r.Post("/{reportId}", actionHandler.CreateAction)  // Buat tindakan untuk report tertentu
+				r.Post("/{reportId}", actionHandler.CreateAction)      // Buat tindakan untuk report tertentu
 				r.Get("/{reportId}", actionHandler.GetActionsByReport) // Ambil semua tindakan untuk report
-	})
+			})
 		})
 	})
 

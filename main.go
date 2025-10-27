@@ -37,7 +37,7 @@ func main() {
 			"http://localhost:3000",
 			"http://192.168.150.152:3000",
 		},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH" ,"DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,
 	})
@@ -49,7 +49,7 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	addr := fmt.Sprintf("0.0.0.0:%s", port) 
+	addr := fmt.Sprintf("0.0.0.0:%s", port)
 
 	log.Printf("🚀 Server running on http://%s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
