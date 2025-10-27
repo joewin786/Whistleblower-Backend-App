@@ -116,7 +116,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Get("/trends", analyticsHandler.GetTrends)
 			r.Get("/by-categories", analyticsHandler.GetByCategories)
 			r.Get("/by-status", analyticsHandler.GetByStatus)
-			r.Get("/\t", analyticsHandler.GetInvestigatorPerformance)
+			r.Get("/investigator-performance", analyticsHandler.GetInvestigatorPerformance)
 			r.Post("/reports/generate", analyticsHandler.GenerateReport)
 		})
 
