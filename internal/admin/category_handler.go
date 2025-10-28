@@ -118,7 +118,7 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	id := utils.GetParam(r, "id")
+	id := utils.GetParam(r, "catId")
 	if id == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing category ID.")
 		return
