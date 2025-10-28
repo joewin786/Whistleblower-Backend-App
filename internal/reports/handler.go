@@ -161,6 +161,13 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ambil role dari context
+	role, _ := r.Context().Value("role").(string)
+	if role != "admin" {
+		utils.RespondWithError(w, http.StatusForbidden, "forbidden: only admin can update report status")
+		return
+	}
+
 	var in models.UpdateReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
@@ -204,9 +211,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[INFO] Laporan #%d mulai ditangani pada %s\n", id, now.Format(time.RFC3339))
 	}
 
-	fmt.Printf("[INFO] Status laporan #%d diperbarui menjadi %v\n", id, in.Status)
+	fmt.Printf("[INFO] Status laporan #%d diperbarui menjadi %v oleh admin\n", id, in.Status)
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report updated"})
 }
+
 
 
 // ==============================
