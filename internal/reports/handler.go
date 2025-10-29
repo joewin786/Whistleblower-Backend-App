@@ -93,9 +93,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
+	reporterType := strings.TrimSpace(r.URL.Query().Get("reporter_type")) // 👈 tambahkan ini
 
 	var list []models.Report
-	tx := h.DB.Preload("User").Model(&models.Report{}) // ✅ Tambahkan Preload("User")
+	tx := h.DB.Model(&models.Report{})
 
 	if status != "" {
 		tx = tx.Where("status = ?", status)
@@ -103,14 +104,17 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	if category != "" {
 		tx = tx.Where("category = ?", category)
 	}
+	if reporterType != "" {
+		tx = tx.Where("reporter_type = ?", reporterType)
+	}
 
 	if err := tx.Order("created_at DESC").Find(&list).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	utils.RespondWithJSON(w, http.StatusOK, list)
 }
+
 
 
 // ==============================
