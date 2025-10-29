@@ -8,13 +8,14 @@ import (
 	"whistleblower_REST/internal/models"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // ⚠️ For development only; restrict in production
+		return true // ⚠️ allow all origins (development only)
 	},
 }
 
@@ -32,6 +33,14 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	reportID64, _ := strconv.ParseUint(reportIDStr, 10, 64)
 	reportID := uint(reportID64)
 
+	// ✅ Get user ID from context (set by AuthMiddleware)
+	rawID := r.Context().Value("id")
+	userID, ok := rawID.(string)
+	if !ok || userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("Upgrade error:", err)
@@ -41,19 +50,20 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	client := &Client{
 		ReportID: reportID,
+		UserID:   userID,
 		Send:     make(chan []byte, 256),
 	}
 	h.Hub.Register(reportID, client)
 	defer h.Hub.Unregister(reportID, client)
 
-	// Start writer goroutine
+	// Writer goroutine
 	go func() {
 		for msg := range client.Send {
 			conn.WriteMessage(websocket.TextMessage, msg)
 		}
 	}()
 
-	// Read messages from this client
+	// Reader loop
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -61,26 +71,32 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		// Parse incoming JSON message
 		var input struct {
-			SenderID string `json:"sender_id"`
-			Message  string `json:"message"`
+			Message string `json:"message"`
 		}
 		if err := json.Unmarshal(message, &input); err != nil {
 			fmt.Println("Invalid JSON:", err)
 			continue
 		}
 
-		// Save to database
+		// ✅ Extract sender from the request context (set by AuthMiddleware)
+		senderID, _ := r.Context().Value("id").(string)
+
+		// ✅ Save to database
 		msg := models.Message{
-			ID:       fmt.Sprintf("%v", reportIDStr+"_"+input.SenderID),
+			ID:       uuid.NewString(),
 			ReportID: reportID,
-			SenderID: &input.SenderID,
+			SenderID: &senderID,
 			Message:  input.Message,
 		}
-		h.DB.Create(&msg)
 
-		// Broadcast to all clients in same report
-		h.Hub.Broadcast(reportID, message)
+		if err := h.DB.Create(&msg).Error; err != nil {
+			fmt.Println("DB save error:", err)
+			continue
+		}
+
+		// ✅ Broadcast the new message (as JSON) to all clients in same report
+		msgJSON, _ := json.Marshal(msg)
+		h.Hub.Broadcast(reportID, msgJSON)
 	}
 }

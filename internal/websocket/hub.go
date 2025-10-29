@@ -6,6 +6,7 @@ import (
 
 type Client struct {
 	ReportID uint
+	UserID   string
 	Send     chan []byte
 }
 
