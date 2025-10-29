@@ -95,19 +95,23 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
 
 	var list []models.Report
-	tx := h.DB.Model(&models.Report{})
+	tx := h.DB.Preload("User").Model(&models.Report{}) // ✅ Tambahkan Preload("User")
+
 	if status != "" {
 		tx = tx.Where("status = ?", status)
 	}
 	if category != "" {
 		tx = tx.Where("category = ?", category)
 	}
+
 	if err := tx.Order("created_at DESC").Find(&list).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	utils.RespondWithJSON(w, http.StatusOK, list)
 }
+
 
 // ==============================
 // GET USER'S OWN REPORTS
