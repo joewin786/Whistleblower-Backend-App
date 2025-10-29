@@ -93,10 +93,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
-	reporterType := strings.TrimSpace(r.URL.Query().Get("reporter_type")) // 👈 tambahkan ini
+	reporterType := strings.TrimSpace(r.URL.Query().Get("reporter_type"))
 
-	var list []models.Report
-	tx := h.DB.Model(&models.Report{})
+	var reports []models.Report
+
+	// ✅ Preload relasi ke tabel users agar bisa akses user.Name
+	tx := h.DB.Preload("User").Model(&models.Report{})
 
 	if status != "" {
 		tx = tx.Where("status = ?", status)
@@ -108,12 +110,51 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 		tx = tx.Where("reporter_type = ?", reporterType)
 	}
 
-	if err := tx.Order("created_at DESC").Find(&list).Error; err != nil {
+	if err := tx.Order("created_at DESC").Find(&reports).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	utils.RespondWithJSON(w, http.StatusOK, list)
+
+	// ✅ Bentuk response dengan nama pelapor sesuai tipe
+	type ReportResponse struct {
+		ID           uint       `json:"id"`
+		Title        string     `json:"title"`
+		Description  string     `json:"description"`
+		Category     string     `json:"category"`
+		Status       string     `json:"status"`
+		ReporterType string     `json:"reporter_type"`
+		ReporterName string     `json:"reporter_name"`
+		Email        *string    `json:"email,omitempty"`
+		CreatedAt    time.Time  `json:"created_at"`
+		UpdatedAt    time.Time  `json:"updated_at"`
+	}
+
+	var out []ReportResponse
+	for _, r := range reports {
+		reporterName := "Anonymous"
+
+		// Kalau user login, ambil nama user dari relasi
+		if r.ReporterType == models.ReporterAuthenticated && r.User != nil {
+			reporterName = r.User.Name
+		}
+
+		out = append(out, ReportResponse{
+			ID:           r.ID,
+			Title:        r.Title,
+			Description:  r.Description,
+			Category:     r.Category,
+			Status:       r.Status,
+			ReporterType: string(r.ReporterType),
+			ReporterName: reporterName,
+			Email:        r.Email,
+			CreatedAt:    r.CreatedAt,
+			UpdatedAt:    r.UpdatedAt,
+		})
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, out)
 }
+
 
 
 
