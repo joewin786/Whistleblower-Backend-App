@@ -90,13 +90,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
 			// Admin Only
-			r.Group(func(r chi.Router) {
-        		r.Use(authMiddleware)
-        		r.Use(auth.RoleMiddleware("admin"))
-        		r.Get("/", reportHandler.GetAll) // ✅ Ini yang memanggil GetAll()
-				r.Patch("/{reportId}", reportHandler.Update)
-    		})
-
+			
 
 			// Public 
 			r.Get("/{reportId}", reportHandler.GetByID)
@@ -111,6 +105,8 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware)
 				r.Get("/my", reportHandler.GetMy)             // laporan user login
+				r.With(auth.RoleMiddleware("admin")).Get("/", reportHandler.GetAll)
+				r.With(auth.RoleMiddleware("admin")).Patch("/{reportId}", reportHandler.Update)
 				r.Delete("/{reportId}", reportHandler.Delete) // hapus laporan
 			})
 
