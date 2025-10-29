@@ -87,18 +87,24 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
+			// Admin Only
+			r.Group(func(r chi.Router) {
+        		r.Use(authMiddleware)
+        		r.Use(auth.RoleMiddleware("admin"))
+        		r.Get("/", reportHandler.GetAll) // ✅ Ini yang memanggil GetAll()
+				r.Patch("/{reportId}", reportHandler.Update)
+    		})
+
+
+
+			// Public 
 			r.Get("/{reportId}", reportHandler.GetByID)
 			r.Get("/{reportId}/messages", messageHandler.GetByReportID)
 			r.Get("/categories", categoryHandler.GetAllCategories)
 			r.With(auth.OptionalAuthMiddleware()).Post("/", reportHandler.Create) // publik bisa kirim laporan (optional auth)
 			r.Put("/{reportId}/assign", reportHandler.AssignAdmin)                // publik bisa assign admin (dengan email wajib)
 
-			 r.Group(func(r chi.Router) {
-        		r.Use(authMiddleware)
-        		r.Use(auth.RoleMiddleware("admin"))
-        		r.Get("/", reportHandler.GetAll) // ✅ Ini yang memanggil GetAll()
-				r.Patch("/{reportId}", reportHandler.Update)
-    		})
+			 
 
 			// --- Protected routes (login required) ---
 			r.Group(func(r chi.Router) {
