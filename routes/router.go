@@ -91,8 +91,8 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Group(func(r chi.Router) {
         		r.Use(authMiddleware)
         		r.Use(auth.RoleMiddleware("admin"))
-        		r.Get("/", reportHandler.GetAll) // ✅ Ini yang memanggil GetAll()
-				r.Patch("/{reportId}", reportHandler.Update)
+        		r.Get("/reports", reportHandler.GetAll) // ✅ Ini yang memanggil GetAll()
+				r.Patch("/reports/{reportId}", reportHandler.Update)
     		})
 
 
