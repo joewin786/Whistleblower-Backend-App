@@ -85,9 +85,7 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			})
 		})
 
-		// ==== REPORTS ====
-		r.Route("/reports", func(r chi.Router) {
-			// Admin Only
+		// Admin Only
 			r.Group(func(r chi.Router) {
         		r.Use(authMiddleware)
         		r.Use(auth.RoleMiddleware("admin"))
@@ -95,8 +93,8 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 				r.Patch("/reports/{reportId}", reportHandler.Update)
     		})
 
-
-
+		// ==== REPORTS ====
+		r.Route("/reports", func(r chi.Router) {
 			// Public 
 			r.Get("/{reportId}", reportHandler.GetByID)
 			r.Get("/{reportId}/messages", messageHandler.GetByReportID)
