@@ -15,6 +15,7 @@ import (
 
 	"whistleblower_REST/internal/messages"
 	"whistleblower_REST/internal/reports"
+	"whistleblower_REST/internal/notifications"
 )
 
 func RegisterRoutes(db *gorm.DB) *chi.Mux {
@@ -89,7 +90,6 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
-			// Admin Only
 			
 
 			// Public 
@@ -160,6 +160,9 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Get("/workflows", workflowHandler.GetWorkflows)
 			r.Put("/workflows", workflowHandler.UpdateWorkflows)
 
+			// Notifications
+			r.Post("/notify-by-report", notifications.SendFromAdminByReport(db))
+
 			// Actions
 			r.Route("/actions", func(r chi.Router) {
 				r.Post("/{reportId}", actionHandler.CreateAction)      // Buat tindakan untuk report tertentu
@@ -168,6 +171,8 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			})
 		})
 	})
+
+	r.Post("/notify", notifications.SendNotification)
 
 	// ===== HEALTH CHECK =====
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {

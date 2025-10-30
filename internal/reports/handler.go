@@ -10,6 +10,7 @@ import (
 
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/utils"
+	"whistleblower_REST/internal/notifications" 
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
@@ -240,7 +241,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// === Update report status ===
+	// === Update report ===
 	res := h.DB.Model(&models.Report{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
@@ -248,6 +249,13 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.RowsAffected == 0 {
 		utils.RespondWithError(w, http.StatusNotFound, "report not found")
+		return
+	}
+
+	// === Ambil info user terkait (supaya tahu channel user-nya) ===
+	var report models.Report
+	if err := h.DB.First(&report, id).Error; err != nil {
+		utils.RespondWithError(w, http.StatusNotFound, "report not found after update")
 		return
 	}
 
@@ -260,10 +268,29 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[INFO] Laporan #%d mulai ditangani pada %s\n", id, now.Format(time.RFC3339))
 	}
 
+	// === 🆕 Kirim notifikasi ke user ===
+	if in.Status != nil {
+		title := "Status Laporan Diperbarui"
+		message := fmt.Sprintf("Laporan #%d sekarang berstatus: %s", report.ID, *in.Status)
+
+		channel := fmt.Sprintf("user-%d", report.UserID) // contoh channel privat per user
+		event := "status-updated"
+
+		err := notifications.Client.Trigger(channel, event, map[string]string{
+			"title":   title,
+			"message": message,
+			"type":    "status",
+		})
+		if err != nil {
+			fmt.Printf("[WARN] Gagal kirim notifikasi ke user-%d: %v\n", report.UserID, err)
+		} else {
+			fmt.Printf("[INFO] Notifikasi dikirim ke user-%d: %s\n", report.UserID, message)
+		}
+	}
+
 	fmt.Printf("[INFO] Status laporan #%d diperbarui menjadi %v oleh admin\n", id, in.Status)
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report updated"})
 }
-
 
 
 // ==============================

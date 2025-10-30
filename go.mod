@@ -13,7 +13,9 @@ require (
 
 require (
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/pusher/pusher-http-go/v5 v5.1.1 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
+	golang.org/x/sys v0.37.0 // indirect
 )
 
 require (
