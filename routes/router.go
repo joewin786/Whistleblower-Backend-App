@@ -14,14 +14,14 @@ import (
 	"gorm.io/gorm"
 
 	"whistleblower_REST/internal/messages"
-	"whistleblower_REST/internal/reports"
 	"whistleblower_REST/internal/notifications"
+	"whistleblower_REST/internal/reports"
 )
 
-func RegisterRoutes(db *gorm.DB) *chi.Mux {
+func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 	r := chi.NewRouter()
 
-	hub := websocket.NewHub()
+	
 	wsHandler := websocket.NewWSHandler(db, hub)
 
 	// === Global middleware ===
@@ -60,6 +60,10 @@ func RegisterRoutes(db *gorm.DB) *chi.Mux {
 			r.Get("/me", authHandler.Me)
 		})
 	})
+
+
+		
+	
 
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {

@@ -25,6 +25,9 @@ func NewHandler(db *gorm.DB) *Handler { return &Handler{DB: db} }
 // ==============================
 // CREATE REPORT
 // ==============================
+// ==============================
+// CREATE REPORT
+// ==============================
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in models.CreateReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -83,6 +86,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if report.Email != nil {
 		fmt.Printf("[INFO] Simulasi kirim email ke %s (Laporan ID #%d, Status: %s)\n",
 			*report.Email, report.ID, report.Status)
+	}
+
+	// ✅ KIRIM NOTIFIKASI KE ADMIN tentang laporan baru
+	if err := notifications.NotifyNewReport(report.ID, report.Title); err != nil {
+		// Log error tapi jangan gagalkan request
+		fmt.Printf("[WARN] ⚠️ Gagal kirim notifikasi laporan baru ke admin: %v\n", err)
 	}
 
 	utils.RespondWithJSON(w, http.StatusCreated, report)
@@ -204,6 +213,9 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 // ==============================
 // UPDATE REPORT STATUS
 // ==============================
+// ==============================
+// UPDATE REPORT STATUS
+// ==============================
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseUintID(chi.URLParam(r, "reportId"))
 	if !ok {
@@ -223,6 +235,18 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// ✅ Ambil status LAMA sebelum update (untuk notifikasi)
+	var oldReport models.Report
+	if err := h.DB.First(&oldReport, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.RespondWithError(w, http.StatusNotFound, "report not found")
+			return
+		}
+		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	oldStatus := oldReport.Status
 
 	updates := map[string]any{
 		"updated_at": time.Now(),
@@ -252,13 +276,6 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// === Ambil info user terkait (supaya tahu channel user-nya) ===
-	var report models.Report
-	if err := h.DB.First(&report, id).Error; err != nil {
-		utils.RespondWithError(w, http.StatusNotFound, "report not found after update")
-		return
-	}
-
 	// === Jika status berubah jadi 'under_review', set handle_at di tabel actions ===
 	if in.Status != nil && *in.Status == models.StatusUnderReview {
 		now := time.Now()
@@ -268,30 +285,26 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[INFO] Laporan #%d mulai ditangani pada %s\n", id, now.Format(time.RFC3339))
 	}
 
-	// === 🆕 Kirim notifikasi ke user ===
-	if in.Status != nil {
-		title := "Status Laporan Diperbarui"
-		message := fmt.Sprintf("Laporan #%d sekarang berstatus: %s", report.ID, *in.Status)
-
-		channel := fmt.Sprintf("user-%d", report.UserID) // contoh channel privat per user
-		event := "status-updated"
-
-		err := notifications.Client.Trigger(channel, event, map[string]string{
-			"title":   title,
-			"message": message,
-			"type":    "status",
-		})
-		if err != nil {
-			fmt.Printf("[WARN] Gagal kirim notifikasi ke user-%d: %v\n", report.UserID, err)
-		} else {
-			fmt.Printf("[INFO] Notifikasi dikirim ke user-%d: %s\n", report.UserID, message)
+	// ✅ KIRIM NOTIFIKASI OTOMATIS jika status berubah
+	if in.Status != nil && oldStatus != *in.Status {
+		newStatus := *in.Status
+		
+		// Panggil fungsi notifikasi yang sudah ada
+		if err := notifications.NotifyStatusChange(h.DB, id, oldStatus, newStatus); err != nil {
+			// Log error tapi jangan gagalkan request
+			fmt.Printf("[WARN] ⚠️ Gagal kirim notifikasi status change: %v\n", err)
 		}
 	}
 
-	fmt.Printf("[INFO] Status laporan #%d diperbarui menjadi %v oleh admin\n", id, in.Status)
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "report updated"})
+	fmt.Printf("[INFO] Status laporan #%d diperbarui dari '%s' menjadi '%s' oleh admin\n", 
+		id, oldStatus, *in.Status)
+	
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{
+		"message": "report updated successfully",
+		"old_status": oldStatus,
+		"new_status": *in.Status,
+	})
 }
-
 
 // ==============================
 // ASSIGN ADMIN TO REPORT (public allowed)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"whistleblower_REST/internal/database"
+	"whistleblower_REST/internal/websocket"
 	"whistleblower_REST/routes"
 
 	"github.com/joho/godotenv"
@@ -28,8 +29,12 @@ func main() {
 	// Run auto migration
 	database.RunMigrations(db)
 
+	hub := websocket.NewHub()
+	log.Println("✅ WebSocket Hub initialized")
+
+
 	// Setup router with GORM DB
-	r := routes.RegisterRoutes(db)
+	r := routes.RegisterRoutes(db, hub)
 
 	// ✅ Tambahkan middleware CORS
 	c := cors.New(cors.Options{
