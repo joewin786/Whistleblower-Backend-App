@@ -3,9 +3,9 @@ package models
 
 type OverviewStats struct{
 	TotalReports int64 `json:"total_reports"`
-	PendingReports int64 `json:"pending_reports"`
+	UnderReviewReports int64 `json:"under_review_reports"`
 	ResolvedReports int64 `json:"resolved_reports"`
-	RejectedReports int64 `json:"rejected_reports"`
+	DismissedReports int64 `json:"dismissed_reports"`
 	TotalInvestigators int64 `json:"total_investigators"`
 }
 

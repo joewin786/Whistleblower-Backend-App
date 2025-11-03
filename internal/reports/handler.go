@@ -89,7 +89,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ✅ KIRIM NOTIFIKASI KE ADMIN tentang laporan baru
-	if err := notifications.NotifyNewReport(report.ID, report.Title); err != nil {
+	if err := notifications.NotifyNewReport(h.DB, report.ID, report.Title); err != nil {
 		// Log error tapi jangan gagalkan request
 		fmt.Printf("[WARN] ⚠️ Gagal kirim notifikasi laporan baru ke admin: %v\n", err)
 	}

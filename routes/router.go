@@ -90,6 +90,11 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 			})
 		})
 
+		r.Route("/notifications", func(r chi.Router) {
+   			 r.Use(authMiddleware)
+    		 r.Get("/my", notifications.GetUserNotifications(db))
+		})
+
 		
 
 		// ==== REPORTS ====
@@ -165,7 +170,7 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 			r.Put("/workflows", workflowHandler.UpdateWorkflows)
 
 			// Notifications
-			r.Post("/notify-by-report", notifications.SendFromAdminByReport(db))
+			r.Get("/notifications", notifications.GetAllAdminNotifications(db)) 
 
 			// Actions
 			r.Route("/actions", func(r chi.Router) {
@@ -176,7 +181,7 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 		})
 	})
 
-	r.Post("/notify", notifications.SendNotification)
+	r.Post("/notify", notifications.SendNotification(db))
 
 	// ===== HEALTH CHECK =====
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
