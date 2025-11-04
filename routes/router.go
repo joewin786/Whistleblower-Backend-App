@@ -40,6 +40,8 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 	settingsHandler := &admin.SettingsHandler{DB: db}
 	workflowHandler := &admin.WorkflowHandler{DB: db}
 	actionHandler := &admin.ActionHandler{DB: db}
+	adminHandler := &admin.AdminHandler{DB: db}
+
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -93,9 +95,10 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 		r.Route("/notifications", func(r chi.Router) {
    			 r.Use(authMiddleware)
     		 r.Get("/my", notifications.GetUserNotifications(db))
-			 r.Patch("/mark-all-read", notifications.MarkAllNotificationsRead(db))
-			 r.Delete("/{notifId}", notifications.DeleteUserNotification(db)) 
-			 r.Delete("/all", notifications.DeleteAllUserNotifications(db))
+			 r.Patch("/my/{notifId}/read", notifications.MarkAllNotificationsAsRead(db))
+			 r.Patch("/my/read-all", notifications.MarkAllNotificationsAsRead(db))
+			 r.Delete("/my/{notifId}", notifications.DeleteUserNotification(db)) 
+			 r.Delete("/my/all", notifications.DeleteAllUserNotifications(db))
 		})
 
 		
@@ -154,6 +157,12 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 		r.Route("/admin/config", func(r chi.Router) {
 			r.Use(authMiddleware)
 			r.Use(auth.RoleMiddleware("admin"))
+
+			r.Route("/admins", func(r chi.Router) {
+				r.Get("/", adminHandler.GetAdmins)     // GET /admin/config/admins?department=IT
+				r.Post("/", adminHandler.CreateAdmin)  // POST /admin/config/admins
+			})
+
 			// Removed GET /categories here to keep it public above
 			r.Post("/categories", categoryHandler.CreateCategory)
 			r.Patch("/categories/{catId}", categoryHandler.UpdateCategory)

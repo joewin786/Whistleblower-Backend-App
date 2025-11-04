@@ -82,11 +82,31 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 		Message string
 		Type    string
 	}{
-		"submitted":  {"📋 Laporan Diterima", "Laporan Anda telah diterima dan sedang menunggu peninjauan", "info"},
-		"under_review": {"🔍 Laporan Sedang Ditinjau", "Tim kami sedang menindaklanjuti laporan Anda", "info"},
-		"resolved":   {"✅ Laporan Selesai", "Laporan Anda telah diselesaikan. Terima kasih atas laporannya!", "success"},
-		"dismissed":  {"❌ Laporan Ditolak", "Maaf, laporan Anda tidak dapat diproses lebih lanjut", "error"},
-		"need_info":  {"📝 Informasi Tambahan Diperlukan", "Kami membutuhkan informasi tambahan terkait laporan Anda", "warning"},
+		"submitted": {
+			Title:   "Laporan Diterima",
+			Message: "Laporan Anda telah diterima dan sedang menunggu peninjauan",
+			Type:    "info",
+		},
+		"under_review": {
+			Title:   "Laporan Sedang Ditinjau",
+			Message: "Tim kami sedang menindaklanjuti laporan Anda",
+			Type:    "info",
+		},
+		"resolved": {
+			Title:   "Laporan Selesai",
+			Message: "Laporan Anda telah diselesaikan. Terima kasih atas laporannya!",
+			Type:    "success",
+		},
+		"dismissed": {
+			Title:   "Laporan Ditolak",
+			Message: "Maaf, laporan Anda tidak dapat diproses lebih lanjut",
+			Type:    "error",
+		},
+		"need_info": {
+			Title:   "Informasi Tambahan Diperlukan",
+			Message: "Kami membutuhkan informasi tambahan terkait laporan Anda",
+			Type:    "warning",
+		},
 	}
 
 	statusInfo, exists := statusMessages[newStatus]
@@ -108,11 +128,15 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 	channel := fmt.Sprintf("user-%s", *report.UserID)
 	event := "status-updated"
 
+	// 🆕 Perbarui judul & pesan agar menyertakan ID laporan
+	enhancedTitle := fmt.Sprintf("Laporan #%d %s", reportID, statusInfo.Title[8:]) // Hapus kata "Laporan " dari awal
+	enhancedMessage := statusInfo.Message
+
 	payload := map[string]any{
-		"title":      statusInfo.Title,
-		"message":    statusInfo.Message,
+		"title":      enhancedTitle,
+		"message":    enhancedMessage,
 		"type":       statusInfo.Type,
-		"report_id":  reportID,      // 🔹 Tambahan: kirim ID laporan
+		"report_id":  reportID,
 		"old_status": oldStatus,
 		"new_status": newStatus,
 		"timestamp":  time.Now().Unix(),
@@ -127,10 +151,10 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 	// 2️⃣ Simpan ke database
 	notif := models.UserNotification{
 		UserID:    *report.UserID,
-		Title:     statusInfo.Title,
-		Message:   statusInfo.Message,
+		Title:     enhancedTitle,    // 🆕 sudah berisi "Laporan #ID"
+		Message:   enhancedMessage,  // 🆕 sudah berisi "ID: #ID"
 		Type:      statusInfo.Type,
-		ReportID:  &reportID,       // 🔹 Simpan id laporan
+		ReportID:  &reportID,
 		IsRead:    false,
 		CreatedAt: time.Now(),
 	}
@@ -143,6 +167,7 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 
 	return nil
 }
+
 
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada laporan baru (untuk admin)
 func NotifyNewReport(db *gorm.DB, reportID uint, title string) error {
@@ -268,22 +293,91 @@ func GetUserNotifications(db *gorm.DB) http.HandlerFunc {
 }
 
 // ✅ Fungsi untuk menandai semua notifikasi sebagai sudah dibaca
-func MarkAllNotificationsRead(db *gorm.DB) http.HandlerFunc {
+// Tambahkan fungsi-fungsi ini ke handler.go Anda
+// Mark single notification as read
+func MarkNotificationAsRead(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uid, ok := r.Context().Value("id").(string)
 		if !ok || uid == "" {
-			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id")
+			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
 		}
 
-		if err := db.Model(&models.UserNotification{}).
+		notifID := chi.URLParam(r, "notificationId")
+		
+		var notif models.UserNotification
+		if err := db.Where("id = ? AND user_id = ?", notifID, uid).First(&notif).Error; err != nil {
+			utils.RespondWithError(w, http.StatusNotFound, "notification not found")
+			return
+		}
+
+		notif.IsRead = true
+		if err := db.Save(&notif).Error; err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "failed to update notification")
+			return
+		}
+
+		fmt.Printf("[INFO] ✅ Notification #%s marked as read for user %s\n", notifID, uid)
+		utils.RespondWithJSON(w, http.StatusOK, notif)
+	}
+}
+
+// Mark all notifications as read
+func MarkAllNotificationsAsRead(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uid, ok := r.Context().Value("id").(string)
+		if !ok || uid == "" {
+			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
+			return
+		}
+
+		fmt.Printf("[DEBUG] Marking all notifications as read for user: %s\n", uid)
+
+		result := db.Model(&models.UserNotification{}).
 			Where("user_id = ? AND is_read = ?", uid, false).
-			Update("is_read", true).Error; err != nil {
-			utils.RespondWithError(w, 500, "failed to mark notifications as read")
+			Update("is_read", true)
+
+		if result.Error != nil {
+			fmt.Printf("[ERROR] Failed to update notifications: %v\n", result.Error)
+			utils.RespondWithError(w, http.StatusInternalServerError, "failed to update notifications")
 			return
 		}
 
-		utils.RespondWithJSON(w, 200, map[string]string{"message": "All notifications marked as read"})
+		fmt.Printf("[DEBUG] Updated %d notifications\n", result.RowsAffected)
+
+		utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"message":        "all notifications marked as read",
+			"rows_affected": result.RowsAffected,
+		})
+	}
+}
+
+// Delete notification
+func DeleteNotification(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uid, ok := r.Context().Value("id").(string)
+		if !ok || uid == "" {
+			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
+			return
+		}
+
+		notifID := chi.URLParam(r, "notificationId")
+		
+		result := db.Where("id = ? AND user_id = ?", notifID, uid).Delete(&models.UserNotification{})
+		if result.Error != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete notification")
+			return
+		}
+
+		if result.RowsAffected == 0 {
+			utils.RespondWithError(w, http.StatusNotFound, "notification not found")
+			return
+		}
+
+		fmt.Printf("[INFO] ✅ Notification #%s deleted for user %s\n", notifID, uid)
+		utils.RespondWithJSON(w, http.StatusOK, map[string]string{
+			"message": "notification deleted",
+		})
 	}
 }
 
