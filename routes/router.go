@@ -93,6 +93,9 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 		r.Route("/notifications", func(r chi.Router) {
    			 r.Use(authMiddleware)
     		 r.Get("/my", notifications.GetUserNotifications(db))
+			 r.Patch("/mark-all-read", notifications.MarkAllNotificationsRead(db))
+			 r.Delete("/{notifId}", notifications.DeleteUserNotification(db)) 
+			 r.Delete("/all", notifications.DeleteAllUserNotifications(db))
 		})
 
 		
@@ -187,6 +190,8 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithJSON(w, 200, map[string]string{"status": "ok"})
 	})
+
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
 	return r
 }

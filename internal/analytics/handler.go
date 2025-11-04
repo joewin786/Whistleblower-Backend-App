@@ -20,7 +20,7 @@ func (h *AnalyticsHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
 	var stats models.OverviewStats
 
 	h.DB.Model(&models.Report{}).Count(&stats.TotalReports)
-	h.DB.Model(&models.Report{}).Where("status = ?", "under_review").Count(&stats.UnderReviewReports)
+	h.DB.Model(&models.Report{}).Where("status = ?", "under_review_reports").Count(&stats.UnderReviewReports)
 	h.DB.Model(&models.Report{}).Where("status = ?", "resolved").Count(&stats.ResolvedReports)
 	h.DB.Model(&models.Report{}).Where("status = ?", "dismissed").Count(&stats.DismissedReports)
 	h.DB.Model(&models.User{}).Where("role = ?", "investigator").Count(&stats.TotalInvestigators)

@@ -8,6 +8,8 @@ import (
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/utils"
 
+	"github.com/go-chi/chi/v5"
+
 	"gorm.io/gorm"
 )
 
@@ -80,39 +82,17 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 		Message string
 		Type    string
 	}{
-		"submitted": {
-			Title:   "📋 Laporan Diterima",
-			Message: "Laporan Anda telah diterima dan sedang menunggu peninjauan",
-			Type:    "info",
-		},
-		"under_review": {
-			Title:   "🔍 Laporan Sedang Ditinjau",
-			Message: "Tim kami sedang menindaklanjuti laporan Anda",
-			Type:    "info",
-		},
-		"resolved": {
-			Title:   "✅ Laporan Selesai",
-			Message: "Laporan Anda telah diselesaikan. Terima kasih atas laporannya!",
-			Type:    "success",
-		},
-		"dismissed": {
-			Title:   "❌ Laporan Ditolak",
-			Message: "Maaf, laporan Anda tidak dapat diproses lebih lanjut",
-			Type:    "error",
-		},
-		"need_info": {
-			Title:   "📝 Informasi Tambahan Diperlukan",
-			Message: "Kami membutuhkan informasi tambahan terkait laporan Anda",
-			Type:    "warning",
-		},
+		"submitted":  {"📋 Laporan Diterima", "Laporan Anda telah diterima dan sedang menunggu peninjauan", "info"},
+		"under_review": {"🔍 Laporan Sedang Ditinjau", "Tim kami sedang menindaklanjuti laporan Anda", "info"},
+		"resolved":   {"✅ Laporan Selesai", "Laporan Anda telah diselesaikan. Terima kasih atas laporannya!", "success"},
+		"dismissed":  {"❌ Laporan Ditolak", "Maaf, laporan Anda tidak dapat diproses lebih lanjut", "error"},
+		"need_info":  {"📝 Informasi Tambahan Diperlukan", "Kami membutuhkan informasi tambahan terkait laporan Anda", "warning"},
 	}
 
 	statusInfo, exists := statusMessages[newStatus]
 	if !exists {
 		statusInfo = struct {
-			Title   string
-			Message string
-			Type    string
+			Title, Message, Type string
 		}{
 			Title:   "📢 Status Laporan Diperbarui",
 			Message: fmt.Sprintf("Status laporan Anda berubah menjadi: %s", newStatus),
@@ -120,9 +100,8 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 		}
 	}
 
-	// 🔹 Pastikan hanya user login yang dikirimi notifikasi
 	if report.UserID == nil || *report.UserID == "" {
-		fmt.Printf("[INFO] ⚠️ Report #%d tidak memiliki UserID (anonymous), notifikasi dilewati\n", reportID)
+		fmt.Printf("[INFO] ⚠️ Report #%d tidak memiliki UserID, notifikasi dilewati\n", reportID)
 		return nil
 	}
 
@@ -133,36 +112,37 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 		"title":      statusInfo.Title,
 		"message":    statusInfo.Message,
 		"type":       statusInfo.Type,
-		"report_id":  reportID,
+		"report_id":  reportID,      // 🔹 Tambahan: kirim ID laporan
 		"old_status": oldStatus,
 		"new_status": newStatus,
 		"timestamp":  time.Now().Unix(),
 	}
 
-	// 🔹 1. Kirim realtime via Pusher
+	// 1️⃣ Kirim realtime via Pusher
 	if err := Client.Trigger(channel, event, payload); err != nil {
-		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi status change ke %s: %v\n", channel, err)
+		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi ke %s: %v\n", channel, err)
 		return err
 	}
 
-	// 🔹 2. Simpan ke database
+	// 2️⃣ Simpan ke database
 	notif := models.UserNotification{
 		UserID:    *report.UserID,
 		Title:     statusInfo.Title,
 		Message:   statusInfo.Message,
 		Type:      statusInfo.Type,
+		ReportID:  &reportID,       // 🔹 Simpan id laporan
+		IsRead:    false,
 		CreatedAt: time.Now(),
 	}
 
 	if err := db.Create(&notif).Error; err != nil {
 		fmt.Printf("[WARN] ⚠️ Gagal simpan notifikasi user ke DB: %v\n", err)
 	} else {
-		fmt.Printf("[INFO] ✅ Notifikasi user disimpan ke DB untuk user_id=%s\n", *report.UserID)
+		fmt.Printf("[INFO] ✅ Notifikasi user disimpan ke DB untuk user_id=%s (report #%d)\n", *report.UserID, reportID)
 	}
 
 	return nil
 }
-
 
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada laporan baru (untuk admin)
 func NotifyNewReport(db *gorm.DB, reportID uint, title string) error {
@@ -197,8 +177,6 @@ func NotifyNewReport(db *gorm.DB, reportID uint, title string) error {
 	fmt.Printf("[INFO] ✅ Admin di-notifikasi tentang report baru #%d\n", reportID)
 	return nil
 }
-
-
 
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada pesan chat baru
 func NotifyNewChatMessage(db *gorm.DB, reportID uint, senderID, message string, isFromAdmin bool) error {
@@ -254,6 +232,7 @@ func NotifyNewChatMessage(db *gorm.DB, reportID uint, senderID, message string, 
 	return nil
 }
 
+// ✅ Fungsi untuk ambil semua notifikasi admin dari database
 func GetAllAdminNotifications(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var notifications []models.Notification
@@ -268,6 +247,7 @@ func GetAllAdminNotifications(db *gorm.DB) http.HandlerFunc {
 	}
 }
 
+// ✅ Fungsi untuk ambil notifikasi user dari database
 func GetUserNotifications(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uid, ok := r.Context().Value("id").(string)
@@ -286,3 +266,72 @@ func GetUserNotifications(db *gorm.DB) http.HandlerFunc {
 		utils.RespondWithJSON(w, 200, list)
 	}
 }
+
+// ✅ Fungsi untuk menandai semua notifikasi sebagai sudah dibaca
+func MarkAllNotificationsRead(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uid, ok := r.Context().Value("id").(string)
+		if !ok || uid == "" {
+			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id")
+			return
+		}
+
+		if err := db.Model(&models.UserNotification{}).
+			Where("user_id = ? AND is_read = ?", uid, false).
+			Update("is_read", true).Error; err != nil {
+			utils.RespondWithError(w, 500, "failed to mark notifications as read")
+			return
+		}
+
+		utils.RespondWithJSON(w, 200, map[string]string{"message": "All notifications marked as read"})
+	}
+}
+
+// ✅ Fungsi untuk menghapus notifikasi user berdasarkan ID
+func DeleteUserNotification(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uid, ok := r.Context().Value("id").(string)
+		if !ok || uid == "" {
+			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id")
+			return
+		}
+
+		notifID := chi.URLParam(r, "notifId")
+		if notifID == "" {
+			utils.RespondWithError(w, http.StatusBadRequest, "missing notification id")
+			return
+		}
+
+		res := db.Where("id = ? AND user_id = ?", notifID, uid).Delete(&models.UserNotification{})
+		if res.Error != nil {
+			utils.RespondWithError(w, 500, "failed to delete notification")
+			return
+		}
+		if res.RowsAffected == 0 {
+			utils.RespondWithError(w, 404, "notification not found or unauthorized")
+			return
+		}
+
+		utils.RespondWithJSON(w, 200, map[string]string{"message": "Notification deleted successfully"})
+	}
+}
+
+// ✅ Fungsi untuk menghapus semua notifikasi user
+func DeleteAllUserNotifications(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uid, ok := r.Context().Value("id").(string)
+		if !ok || uid == "" {
+			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id")
+			return
+		}
+
+		if err := db.Where("user_id = ?", uid).Delete(&models.UserNotification{}).Error; err != nil {
+			utils.RespondWithError(w, 500, "failed to delete all notifications")
+			return
+		}
+
+		utils.RespondWithJSON(w, 200, map[string]string{"message": "All notifications deleted successfully"})
+	}
+}
+
+

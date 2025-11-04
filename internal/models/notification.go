@@ -8,6 +8,9 @@ type Notification struct {
 	Message   string    `json:"message"`
 	Type      string    `json:"type"`
 	CreatedAt time.Time `json:"created_at"`
+    ReportID  *uint     `json:"report_id,omitempty"` 
+    IsRead    bool      `json:"is_read" gorm:"default:false"`
+
 }
 
 type UserNotification struct {
@@ -16,6 +19,8 @@ type UserNotification struct {
     Title     string    `json:"title"`
     Message   string    `json:"message"`
     Type      string    `json:"type"`
+    ReportID  *uint     `json:"report_id,omitempty"`
+    IsRead    bool      `json:"is_read" gorm:"default:false"`
     Read      bool      `json:"read" gorm:"default:false"`
     CreatedAt time.Time `json:"created_at"`
 }
