@@ -122,6 +122,27 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 
 	if report.UserID == nil || *report.UserID == "" {
 		fmt.Printf("[INFO] ⚠️ Report #%d tidak memiliki UserID, notifikasi dilewati\n", reportID)
+
+		// ✅ Tambahan: kirim email ke reporter anonymous jika punya email
+		if report.ReporterType == "anonymous" && report.Email != nil && *report.Email != "" {
+			subject := fmt.Sprintf("📢 Status Laporan #%d Telah Berubah", reportID)
+			body := fmt.Sprintf(`
+				<h2>%s</h2>
+				<p>%s</p>
+				<hr>
+				<p><strong>ID Laporan:</strong> #%d</p>
+				<p><strong>Status Lama:</strong> %s</p>
+				<p><strong>Status Baru:</strong> %s</p>
+				<p style="color: gray; font-size: 12px;">Email ini dikirim otomatis oleh sistem Whistleblower.</p>
+			`, statusInfo.Title, statusInfo.Message, reportID, oldStatus, newStatus)
+
+			if err := utils.SendEmail(*report.Email, subject, body); err != nil {
+				fmt.Printf("[EMAIL ERROR] gagal kirim ke %s: %v\n", *report.Email, err)
+			} else {
+				fmt.Printf("[EMAIL SENT] Notifikasi status #%d dikirim ke %s\n", reportID, *report.Email)
+			}
+		}
+
 		return nil
 	}
 
@@ -151,8 +172,8 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 	// 2️⃣ Simpan ke database
 	notif := models.UserNotification{
 		UserID:    *report.UserID,
-		Title:     enhancedTitle,    // 🆕 sudah berisi "Laporan #ID"
-		Message:   enhancedMessage,  // 🆕 sudah berisi "ID: #ID"
+		Title:     enhancedTitle,   // 🆕 sudah berisi "Laporan #ID"
+		Message:   enhancedMessage, // 🆕 sudah berisi "ID: #ID"
 		Type:      statusInfo.Type,
 		ReportID:  &reportID,
 		IsRead:    false,
@@ -167,6 +188,7 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 
 	return nil
 }
+
 
 
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada laporan baru (untuk admin)

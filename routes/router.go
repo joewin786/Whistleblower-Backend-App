@@ -138,6 +138,18 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 				r.Get("/", messageHandler.GetByReportID)
 
 				r.With(authMiddleware).Post("/", messageHandler.Create)
+
+				r.With(authMiddleware).Post("/upload", wsHandler.UploadMessageFile)
+
+				r.With(authMiddleware).Get("/unread-count", messageHandler.GetUnreadCount)
+    			r.With(authMiddleware).Patch("/mark-all-read", messageHandler.MarkAllMessagesAsRead)
+    			r.With(authMiddleware).Get("/{messageId}/status", messageHandler.GetMessageReadStatus)
+    			r.With(authMiddleware).Patch("/{messageId}/read", messageHandler.MarkMessageAsRead)
+    
+    			// 🆕 Edit & Delete message (dengan auth)
+				r.With(authMiddleware).Patch("/{messageId}", messageHandler.UpdateMessage)
+    			r.With(authMiddleware).Delete("/{messageId}", messageHandler.Delete)
+    			r.With(authMiddleware).Get("/{messageId}", messageHandler.GetByID)
 			})
 		})
 
