@@ -66,7 +66,7 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Reader loop
+	// Single Reader loop (gabungan)
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -74,23 +74,49 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		var input struct {
-			Message string `json:"message"`
-		}
+		// Parse JSON dari client
+		var input map[string]interface{}
 		if err := json.Unmarshal(message, &input); err != nil {
 			fmt.Println("Invalid JSON:", err)
 			continue
 		}
 
-		senderID, _ := r.Context().Value("id").(string)
+		eventType, _ := input["type"].(string)
+		text, _ := input["message"].(string)
 
-		// Save to database
+		// 1️⃣ Abaikan event kosong
+		if eventType == "" && text == "" {
+			fmt.Println("⚠️ Ignored empty message")
+			continue
+		}
+
+		// 2️⃣ Event typing → broadcast ke semua client, tapi tidak disimpan
+		if eventType == "typing" {
+			payload := map[string]any{
+				"type":      "typing",
+				"user_id":   userID,
+				"report_id": reportID,
+				"timestamp": time.Now().Unix(),
+			}
+			data, _ := json.Marshal(payload)
+			h.Hub.Broadcast(reportID, data)
+			continue
+		}
+
+		// 3️⃣ Pesan teks kosong → skip (hindari spam)
+		if text == "" {
+			fmt.Println("⚠️ Empty text message ignored")
+			continue
+		}
+
+		// 4️⃣ Simpan pesan valid ke database
 		msg := models.Message{
-			ID:       uuid.NewString(),
-			ReportID: reportID,
-			SenderID: &senderID,
-			Message:  input.Message,
-			IsRead:   false,
+			ID:        uuid.NewString(),
+			ReportID:  reportID,
+			SenderID:  &userID,
+			Message:   text,
+			IsRead:    false,
+			CreatedAt: time.Now(),
 		}
 
 		if err := h.DB.Create(&msg).Error; err != nil {
@@ -98,11 +124,12 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Broadcast the new message
+		// 5️⃣ Broadcast pesan baru ke semua client
 		msgJSON, _ := json.Marshal(msg)
 		h.Hub.Broadcast(reportID, msgJSON)
 	}
 }
+
 
 // 🆕 FUNGSI BARU: Upload file via HTTP (bukan WebSocket)
 func (h *WSHandler) UploadMessageFile(w http.ResponseWriter, r *http.Request) {

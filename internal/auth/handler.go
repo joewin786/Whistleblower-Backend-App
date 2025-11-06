@@ -140,31 +140,40 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	// Ambil data dari context (sudah diinject AuthMiddleware)
 	id, ok := r.Context().Value("id").(string)
 	if !ok || id == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	var user MeResponse
+	role, _ := r.Context().Value("role").(string)
 
-	err := h.DB.
-		Table("users").
-		Select("id", "name", "email", "role", "created_at", "updated_at").
+	var user User
+	if err := h.DB.Select("id", "name", "email", "role", "created_at", "updated_at").
 		Where("id = ?", id).
-		Take(&user).Error
-
-	if err != nil {
+		First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			utils.RespondWithError(w, http.StatusNotFound, "User not found.")
 			return
 		}
-		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve user information.")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve user.")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, user)
+	// Gunakan struct response agar rapi
+	resp := MeResponse{
+		ID:        user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		Role:      role, // role dari token
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, resp)
 }
+
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req RefreshTokenRequest

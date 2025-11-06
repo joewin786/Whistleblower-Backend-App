@@ -34,19 +34,21 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 	reportHandler := reports.NewHandler(db)
 	evidenceHandler := evidence.NewHandler(db)
 	categoryHandler := &admin.CategoryHandler{DB: db}
-	messageHandler := messages.NewHandler(db)
+	messageHandler := messages.NewHandler(db, hub)
 	analyticsHandler := &analytics.AnalyticsHandler{DB: db}
 	roleHandler := &admin.RoleHandler{DB: db}
 	settingsHandler := &admin.SettingsHandler{DB: db}
 	workflowHandler := &admin.WorkflowHandler{DB: db}
 	actionHandler := &admin.ActionHandler{DB: db}
 	adminHandler := &admin.AdminHandler{DB: db}
+	
 
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/register", authHandler.Register)
 		r.Post("/login", authHandler.Login)
+		
 		r.Post("/refresh", authHandler.Refresh)
 		r.Post("/validate", authHandler.ValidateToken)
 		r.Post("/logout", func(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +142,7 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 				r.With(authMiddleware).Post("/", messageHandler.Create)
 
 				r.With(authMiddleware).Post("/upload", wsHandler.UploadMessageFile)
+				
 
 				r.With(authMiddleware).Get("/unread-count", messageHandler.GetUnreadCount)
     			r.With(authMiddleware).Patch("/mark-all-read", messageHandler.MarkAllMessagesAsRead)

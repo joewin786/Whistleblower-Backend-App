@@ -11,13 +11,17 @@ import (
 	"gorm.io/gorm"
 	"whistleblower_REST/internal/utils"
 	"whistleblower_REST/internal/models"
+	"whistleblower_REST/internal/websocket" 
 )
 
 type Handler struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Hub *websocket.Hub
 }
 
-func NewHandler(db *gorm.DB) *Handler { return &Handler{DB: db} }
+func NewHandler(db *gorm.DB, hub *websocket.Hub) *Handler {
+	return &Handler{DB: db, Hub: hub}
+}
 
 
 func parseUintID(s string) (uint, bool) {
@@ -165,7 +169,7 @@ func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get current user ID (recipient)
+	// Ambil user ID dari token (si pembaca pesan)
 	rawID := r.Context().Value("id")
 	currentUserID, ok := rawID.(string)
 	if !ok || currentUserID == "" {
@@ -173,6 +177,7 @@ func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ambil pesan dari database
 	var msg models.Message
 	if err := h.DB.Where("id = ? AND report_id = ?", mid, rid).First(&msg).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -183,13 +188,13 @@ func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ⚠️ Jangan mark as read jika user adalah pengirim pesan
+	// Jangan tandai pesan milik sendiri
 	if msg.SenderID != nil && *msg.SenderID == currentUserID {
 		utils.RespondWithError(w, http.StatusBadRequest, "cannot mark own message as read")
 		return
 	}
 
-	// Update IsRead & ReadAt
+	// Update status read
 	now := time.Now()
 	msg.IsRead = true
 	msg.ReadAt = &now
@@ -197,6 +202,19 @@ func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
 	if err := h.DB.Save(&msg).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "failed to update message")
 		return
+	}
+
+	// 🟢 Broadcast status read ke semua client dalam report room
+	if h.Hub != nil {
+		payload := map[string]any{
+			"type":       "read_status",
+			"report_id":  rid,
+			"message_id": msg.ID,
+			"is_read":    true,
+			"read_at":    msg.ReadAt,
+		}
+		data, _ := json.Marshal(payload)
+		h.Hub.Broadcast(rid, data)
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, msg)
@@ -211,7 +229,7 @@ func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get current user ID
+	// Ambil user ID dari token (pembaca)
 	rawID := r.Context().Value("id")
 	currentUserID, ok := rawID.(string)
 	if !ok || currentUserID == "" {
@@ -221,11 +239,11 @@ func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) 
 
 	now := time.Now()
 
-	// ✅ Hanya mark as read pesan yang BUKAN dari user sendiri
+	// Tandai semua pesan yang bukan milik sendiri
 	result := h.DB.Model(&models.Message{}).
-		Where("report_id = ? AND is_read = ? AND (sender_id IS NULL OR sender_id != ?)", 
+		Where("report_id = ? AND is_read = ? AND (sender_id IS NULL OR sender_id != ?)",
 			rid, false, currentUserID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"is_read": true,
 			"read_at": now,
 		})
@@ -235,12 +253,24 @@ func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
+	// 🟢 Broadcast event "semua pesan dibaca"
+	if h.Hub != nil {
+		payload := map[string]any{
+			"type":       "messages_read_all",
+			"report_id":  rid,
+			"user_id":    currentUserID,
+			"read_at":    now,
+			"rows_count": result.RowsAffected,
+		}
+		data, _ := json.Marshal(payload)
+		h.Hub.Broadcast(rid, data)
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]any{
 		"message":       "all messages marked as read",
 		"rows_affected": result.RowsAffected,
 	})
 }
-
 // ✅ Get unread message count for a report
 func (h *Handler) GetUnreadCount(w http.ResponseWriter, r *http.Request) {
 	ridStr := chi.URLParam(r, "reportId")
