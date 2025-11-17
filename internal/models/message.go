@@ -2,7 +2,7 @@ package models
 
 import (
 	"time"
-	"whistleblower_REST/internal/auth"
+	
 )
 
 
@@ -27,7 +27,7 @@ type Message struct {
 
 	// Associations
 	Report Report `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:ReportID;references:ID"`
-	User   auth.User      `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:SenderID;references:ID"`
+	User   User      `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:SenderID;references:ID"`
 }
 
 type CreateMessageRequest struct {

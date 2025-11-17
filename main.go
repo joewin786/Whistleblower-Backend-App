@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"whistleblower_REST/internal/database"
+	"whistleblower_REST/internal/notifications"
 	"whistleblower_REST/internal/websocket"
 	"whistleblower_REST/routes"
 
@@ -29,6 +30,14 @@ func main() {
 	// Run auto migration
 	database.RunMigrations(db)
 
+	// ✅ Initialize FCM (Firebase Cloud Messaging)
+	if err := notifications.InitializeFCM(); err != nil {
+		log.Printf("⚠️  Warning: FCM initialization failed: %v\n", err)
+		log.Println("Push notifications will not be available")
+	} else {
+		log.Println("✅ FCM (Firebase Cloud Messaging) initialized successfully")
+	}
+
 	hub := websocket.NewHub()
 	log.Println("✅ WebSocket Hub initialized")
 
@@ -40,7 +49,7 @@ func main() {
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{
 			"http://localhost:3000",
-			"http://192.168.150.169:3000",
+			"http://192.168.150.84:3000",
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},

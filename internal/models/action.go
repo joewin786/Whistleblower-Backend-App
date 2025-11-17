@@ -15,7 +15,7 @@ type Action struct{
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
-
+	
 type CreateActionRequest struct {
 	ActionDescription string `json:"action_description"`
 	Department string `json:"department"`

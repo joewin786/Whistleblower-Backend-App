@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 	"whistleblower_REST/internal/models"
+	"whistleblower_REST/internal/notifications" // ✅ TAMBAHKAN IMPORT INI
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -19,7 +20,7 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // ⚠️ allow all origins (development only)
+		return true // ⚠ allow all origins (development only)
 	},
 }
 
@@ -46,7 +47,7 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println("Upgrade error:", err)
+		fmt.Println("❌ Upgrade error:", err)
 		return
 	}
 	defer conn.Close()
@@ -55,34 +56,69 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		ReportID: reportID,
 		UserID:   userID,
 		Send:     make(chan []byte, 256),
+		Conn:     conn,
 	}
 	h.Hub.Register(reportID, client)
 	defer h.Hub.Unregister(reportID, client)
 
-	// Writer goroutine
+	fmt.Printf("✅ WS connected: userID=%s reportID=%d\n", userID, reportID)
+
+	// Auto-mark messages as read when client connects
 	go func() {
-		for msg := range client.Send {
-			conn.WriteMessage(websocket.TextMessage, msg)
+		time.Sleep(500 * time.Millisecond)
+		
+		now := time.Now()
+		result := h.DB.Model(&models.Message{}).
+			Where("report_id = ? AND sender_id != ? AND is_read = ?", reportID, userID, false).
+			Updates(map[string]interface{}{
+				"is_read": true,
+				"read_at": now,
+			})
+
+		if result.Error == nil && result.RowsAffected > 0 {
+			fmt.Printf("✅ Auto-marked %d messages as read on connect (user: %s)\n", result.RowsAffected, userID)
+			
+			payload := map[string]any{
+				"type":      "messages_read_all",
+				"report_id": reportID,
+				"reader_id": userID,
+				"read_at":   now.Format(time.RFC3339),
+				"count":     result.RowsAffected,
+			}
+			data, _ := json.Marshal(payload)
+			h.Hub.Broadcast(reportID, data)
+			fmt.Printf("📤 [AUTO-READ] Broadcasted to ALL clients (reader: %s)\n", userID)
 		}
 	}()
 
-	// Single Reader loop (gabungan)
+	// Writer goroutine
+	go func() {
+		for msg := range client.Send {
+			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				fmt.Printf("❌ Write error for user %s: %v\n", userID, err)
+				break
+			}
+		}
+	}()
+
+	// Single Reader loop
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
-			fmt.Println("Read error:", err)
+			fmt.Printf("🔌 Read error for user %s: %v\n", userID, err)
 			break
 		}
 
-		// Parse JSON dari client
 		var input map[string]interface{}
 		if err := json.Unmarshal(message, &input); err != nil {
-			fmt.Println("Invalid JSON:", err)
+			fmt.Println("❌ Invalid JSON:", err)
 			continue
 		}
 
 		eventType, _ := input["type"].(string)
 		text, _ := input["message"].(string)
+
+		fmt.Printf("📩 Received from %s: type=%s\n", userID, eventType)
 
 		// 1️⃣ Abaikan event kosong
 		if eventType == "" && text == "" {
@@ -90,7 +126,7 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 2️⃣ Event typing → broadcast ke semua client, tapi tidak disimpan
+		// 2️⃣ Event typing
 		if eventType == "typing" {
 			payload := map[string]any{
 				"type":      "typing",
@@ -103,13 +139,84 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 3️⃣ Pesan teks kosong → skip (hindari spam)
+		// 3️⃣ Event read_all
+		if eventType == "read_all" {
+			now := time.Now()
+
+			result := h.DB.Model(&models.Message{}).
+				Where("report_id = ? AND sender_id != ? AND is_read = ?", reportID, userID, false).
+				Updates(map[string]interface{}{
+					"is_read": true,
+					"read_at": now,
+				})
+
+			if result.Error != nil {
+				fmt.Printf("❌ DB read_all update error: %v\n", result.Error)
+				continue
+			}
+
+			fmt.Printf("✅ [READ_ALL] Marked %d messages as read by %s (reportID=%d)\n", result.RowsAffected, userID, reportID)
+
+			payload := map[string]any{
+				"type":      "messages_read_all",
+				"report_id": reportID,
+				"reader_id": userID,
+				"read_at":   now.Format(time.RFC3339),
+				"count":     result.RowsAffected,
+			}
+			data, _ := json.Marshal(payload)
+
+			h.Hub.Broadcast(reportID, data)
+			fmt.Printf("📤 [READ_ALL] Broadcasted to ALL clients (reader: %s)\n", userID)
+			continue
+		}
+
+		// 4️⃣ Event read_message
+		if eventType == "read_message" {
+			messageID, _ := input["message_id"].(string)
+			if messageID == "" {
+				fmt.Println("⚠️ Missing message_id for read_message event")
+				continue
+			}
+
+			now := time.Now()
+			result := h.DB.Model(&models.Message{}).
+				Where("id = ? AND report_id = ? AND sender_id != ? AND is_read = ?", messageID, reportID, userID, false).
+				Updates(map[string]interface{}{
+					"is_read": true,
+					"read_at": now,
+				})
+
+			if result.Error != nil {
+				fmt.Printf("❌ DB read_message update error: %v\n", result.Error)
+				continue
+			}
+
+			if result.RowsAffected > 0 {
+				fmt.Printf("✅ Message %s marked as read by %s\n", messageID, userID)
+
+				payload := map[string]any{
+					"type":       "read_status",
+					"message_id": messageID,
+					"report_id":  reportID,
+					"reader_id":  userID,
+					"is_read":    true,
+					"read_at":    now.Format(time.RFC3339),
+				}
+				data, _ := json.Marshal(payload)
+				h.Hub.BroadcastExcept(reportID, client, data)
+				fmt.Printf("📤 Broadcasted message_read to other clients (message: %s, reader: %s)\n", messageID, userID)
+			}
+			continue
+		}
+
+		// 5️⃣ Pesan teks kosong → skip
 		if text == "" {
 			fmt.Println("⚠️ Empty text message ignored")
 			continue
 		}
 
-		// 4️⃣ Simpan pesan valid ke database
+		// 6️⃣ Simpan pesan valid ke database
 		msg := models.Message{
 			ID:        uuid.NewString(),
 			ReportID:  reportID,
@@ -120,24 +227,64 @@ func (h *WSHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := h.DB.Create(&msg).Error; err != nil {
-			fmt.Println("DB save error:", err)
+			fmt.Printf("❌ DB save error: %v\n", err)
 			continue
 		}
 
-		// 5️⃣ Broadcast pesan baru ke semua client
+		fmt.Printf("✅ [NEW MSG] Saved: id=%s, sender=%s\n", msg.ID, userID)
+
+		// 7️⃣ Broadcast pesan baru ke semua client via WebSocket
 		msgJSON, _ := json.Marshal(msg)
 		h.Hub.Broadcast(reportID, msgJSON)
+
+		// 8️⃣ Auto-mark pesan sebagai delivered
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			
+			h.DB.Model(&models.Message{}).
+				Where("id = ?", msg.ID).
+				Update("is_delivered", true)
+			
+			deliveryPayload := map[string]any{
+				"type":         "message_delivered",
+				"message_id":   msg.ID,
+				"report_id":    reportID,
+				"is_delivered": true,
+			}
+			deliveryData, _ := json.Marshal(deliveryPayload)
+			h.Hub.Broadcast(reportID, deliveryData)
+		}()
+
+		// ✅ 9️⃣ TAMBAHAN: Kirim Push Notification & Pusher
+		go h.sendMessageNotifications(reportID, userID, text)
+	}
+
+	fmt.Printf("🔌 WS disconnected: userID=%s reportID=%d\n", userID, reportID)
+}
+
+// ✅ FUNGSI BARU: Kirim notifikasi untuk pesan baru
+func (h *WSHandler) sendMessageNotifications(reportID uint, senderID, message string) {
+	// Check if sender is admin
+	var user models.User
+	isAdmin := false
+	if err := h.DB.First(&user, "id = ?", senderID).Error; err == nil {
+		isAdmin = (user.Role == "admin")
+	}
+
+	// Send notification (Pusher + FCM + DB)
+	if err := notifications.NotifyNewChatMessage(h.DB, reportID, senderID, message, isAdmin); err != nil {
+		fmt.Printf("[WS NOTIFY ERROR] ❌ Failed to send notification: %v\n", err)
+	} else {
+		fmt.Printf("[WS NOTIFY] ✅ Notification sent for message from %s (report #%d)\n", senderID, reportID)
 	}
 }
 
-
-// 🆕 FUNGSI BARU: Upload file via HTTP (bukan WebSocket)
+// Upload file via HTTP
 func (h *WSHandler) UploadMessageFile(w http.ResponseWriter, r *http.Request) {
 	reportIDStr := chi.URLParam(r, "reportId")
 	reportID64, _ := strconv.ParseUint(reportIDStr, 10, 64)
 	reportID := uint(reportID64)
 
-	// Get user ID from context
 	rawID := r.Context().Value("id")
 	userID, ok := rawID.(string)
 	if !ok || userID == "" {
@@ -145,7 +292,6 @@ func (h *WSHandler) UploadMessageFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 10MB)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "file too large", http.StatusBadRequest)
 		return
@@ -158,21 +304,18 @@ func (h *WSHandler) UploadMessageFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	message := r.FormValue("message") // Optional text message
+	message := r.FormValue("message")
 
-	// Create upload directory if not exists
 	uploadDir := "./uploads/messages"
 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
 		http.Error(w, "failed to create upload directory", http.StatusInternalServerError)
 		return
 	}
 
-	// Generate unique filename
 	ext := filepath.Ext(handler.Filename)
 	filename := fmt.Sprintf("%s_%d%s", uuid.NewString(), time.Now().Unix(), ext)
 	filePath := filepath.Join(uploadDir, filename)
 
-	// Save file to disk
 	dst, err := os.Create(filePath)
 	if err != nil {
 		http.Error(w, "failed to save file", http.StatusInternalServerError)
@@ -185,12 +328,10 @@ func (h *WSHandler) UploadMessageFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// File URL (adjust sesuai domain Anda)
 	fileURL := fmt.Sprintf("/uploads/messages/%s", filename)
 	fileSize := handler.Size
 	contentType := handler.Header.Get("Content-Type")
 
-	// Save message to database
 	msg := models.Message{
 		ID:       uuid.NewString(),
 		ReportID: reportID,
@@ -212,6 +353,51 @@ func (h *WSHandler) UploadMessageFile(w http.ResponseWriter, r *http.Request) {
 	msgJSON, _ := json.Marshal(msg)
 	h.Hub.Broadcast(reportID, msgJSON)
 
+	// Auto-mark as delivered
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		h.DB.Model(&models.Message{}).
+			Where("id = ?", msg.ID).
+			Update("is_delivered", true)
+		
+		deliveryPayload := map[string]any{
+			"type":         "message_delivered",
+			"message_id":   msg.ID,
+			"report_id":    reportID,
+			"is_delivered": true,
+		}
+		deliveryData, _ := json.Marshal(deliveryPayload)
+		h.Hub.Broadcast(reportID, deliveryData)
+	}()
+
+	// ✅ TAMBAHAN: Kirim notifikasi untuk file upload
+	go h.sendFileNotifications(reportID, userID, message, handler.Filename)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(msg)
+}
+
+// ✅ FUNGSI BARU: Kirim notifikasi untuk file upload
+func (h *WSHandler) sendFileNotifications(reportID uint, senderID, message, filename string) {
+	// Check if sender is admin
+	var user models.User
+	isAdmin := false
+	if err := h.DB.First(&user, "id = ?", senderID).Error; err == nil {
+		isAdmin = (user.Role == "admin")
+	}
+
+	// Format message with file info
+	notificationMessage := message
+	if notificationMessage == "" {
+		notificationMessage = fmt.Sprintf("Mengirim file: %s", filename)
+	} else {
+		notificationMessage = fmt.Sprintf("%s (File: %s)", message, filename)
+	}
+
+	// Send notification
+	if err := notifications.NotifyNewChatMessage(h.DB, reportID, senderID, notificationMessage, isAdmin); err != nil {
+		fmt.Printf("[FILE NOTIFY ERROR] ❌ Failed to send notification: %v\n", err)
+	} else {
+		fmt.Printf("[FILE NOTIFY] ✅ Notification sent for file upload from %s (report #%d)\n", senderID, reportID)
+	}
 }

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 	"whistleblower_REST/internal/utils"
-
+	"whistleblower_REST/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -48,15 +48,12 @@ type MeResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-type User struct {
-	ID        string    `gorm:"primaryKey;type:text" json:"id"`
-	Name      string    `gorm:"not null" json:"name"`
-	Email     string    `gorm:"uniqueIndex;not null" json:"email"`
-	Password  string    `gorm:"not null" json:"-"`
-	Role      string    `gorm:"default:user" json:"role"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+type UpdateProfileRequest struct {
+    Name string `json:"name" binding:"required"`
 }
+
+
+
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var input RegisterRequest
@@ -66,7 +63,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var existing User
+	var existing models.User
 	if err := h.DB.Where("email = ?", input.Email).First(&existing).Error; err == nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Email is already registered. Please use a different email.")
 		return
@@ -78,7 +75,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := User{
+	user := models.User{
 		ID:       uuid.NewString(),
 		Name:     input.Name,
 		Email:    input.Email,
@@ -104,7 +101,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user User
+	var user models.User
 	if err := h.DB.
 		Select("id", "password", "role").
 		Where("email = ?", input.Email).
@@ -149,7 +146,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	role, _ := r.Context().Value("role").(string)
 
-	var user User
+	var user models.User
 	if err := h.DB.Select("id", "name", "email", "role", "created_at", "updated_at").
 		Where("id = ?", id).
 		First(&user).Error; err != nil {
@@ -188,7 +185,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var u User
+	var u models.User
 	if err := h.DB.Select("role").Where("id = ?", id).First(&u).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to fetch user role.")
 		return
@@ -228,3 +225,46 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 		"valid": true,
 	})
 }
+
+func (h *AuthHandler) EditProfile(w http.ResponseWriter, r *http.Request) {
+    id, ok := r.Context().Value("id").(string)
+    if !ok || id == "" {
+        utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
+        return
+    }
+
+    var req UpdateProfileRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+        utils.RespondWithError(w, http.StatusBadRequest, "Invalid request. Name is required.")
+        return
+    }
+
+    // Cari user
+    var user models.User
+    if err := h.DB.Where("id = ?", id).First(&user).Error; err != nil {
+        utils.RespondWithError(w, http.StatusNotFound, "User not found")
+        return
+    }
+
+    // Update field
+    user.Name = req.Name
+    user.UpdatedAt = time.Now()
+
+    if err := h.DB.Save(&user).Error; err != nil {
+        utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update profile")
+        return
+    }
+
+    utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
+        "message": "Profile updated successfully",
+        "user": map[string]interface{}{
+            "id":        user.ID,
+            "name":      user.Name,
+            "email":     user.Email,
+            "role":      user.Role,
+            "createdAt": user.CreatedAt,
+            "updatedAt": user.UpdatedAt,
+        },
+    })
+}
+

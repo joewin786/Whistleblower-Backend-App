@@ -5,7 +5,9 @@ import (
 	"whistleblower_REST/internal/admin"
 	"whistleblower_REST/internal/analytics"
 	"whistleblower_REST/internal/auth"
+	"whistleblower_REST/internal/chatagent"
 	"whistleblower_REST/internal/evidence"
+	"whistleblower_REST/internal/feedback"
 	"whistleblower_REST/internal/utils"
 	"whistleblower_REST/internal/websocket"
 
@@ -13,9 +15,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"gorm.io/gorm"
 
+	"whistleblower_REST/internal/ai"
 	"whistleblower_REST/internal/messages"
 	"whistleblower_REST/internal/notifications"
 	"whistleblower_REST/internal/reports"
+	"whistleblower_REST/internal/reviews"
 )
 
 func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
@@ -41,27 +45,86 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 	workflowHandler := &admin.WorkflowHandler{DB: db}
 	actionHandler := &admin.ActionHandler{DB: db}
 	adminHandler := &admin.AdminHandler{DB: db}
+	reviewHandler := reviews.NewHandler(db)
+	aiHandler := ai.NewHandler(db)
+	feedbackTypeHandler := feedback.NewTypeHandler(db)
+	feedbackHandler := feedback.NewFeedbackHandler(db)
 	
+	
+
+	// FCM Routes
+	r.Group(func(r chi.Router) {
+		r.Use(auth.AuthMiddleware()) // User must be authenticated
+
+		// Register device for push notifications
+		r.Post("/api/devices/register", notifications.RegisterDevice(db))
+		
+		// Unregister device
+		r.Post("/api/devices/unregister", notifications.UnregisterDevice(db))
+		
+		// Get all user devices
+		r.Get("/api/devices", notifications.GetUserDevices(db))
+		
+		// Delete specific device
+		r.Delete("/api/devices/{deviceId}", notifications.DeleteDevice(db))
+		
+		// Test push notification
+		r.Post("/api/notifications/test-push", notifications.TestPushNotification(db))
+	})
+
+
+	r.Route("/feedbacks", func(r chi.Router) {
+		// Public: Submit feedback (anonymous or authenticated)
+		r.With(auth.OptionalAuthMiddleware()).Post("/", feedbackHandler.CreateFeedback)
+		
+		// Public: Upload image for feedback
+		r.Post("/{feedbackId}/image", feedbackHandler.UploadFeedbackImage)
+		
+		// Public: Get active feedback types
+		r.Get("/types", feedbackTypeHandler.GetAllFeedbackTypes)
+		
+		// Protected: Get my feedbacks (user only)
+		r.With(authMiddleware).Get("/my", feedbackHandler.GetMyFeedbacks)
+	})
+
+
 
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
+		// === Auth Basic === //
 		r.Post("/register", authHandler.Register)
 		r.Post("/login", authHandler.Login)
-		
+		r.Post("/google", authHandler.GoogleAuth)
 		r.Post("/refresh", authHandler.Refresh)
 		r.Post("/validate", authHandler.ValidateToken)
+
+		// === Password & Security === //
+		r.Post("/forgot-password", authHandler.ForgotPassword)
+		r.Post("/verify-code", authHandler.VerifyResetCode)
+		r.Post("/reset-password",authHandler.ResetPassword)
+
+		// === Change Password (with auth) === //
+		r.Group(func(r chi.Router) {
+			r.Use(auth.AuthMiddleware()) // ✅ PENTING: Apply middleware
+			r.Post("/request-change-password", authHandler.RequestChangePassword)
+			r.Post("/verify-change-code", authHandler.VerifyChangePasswordCode)
+			r.Post("/change-password", authHandler.ChangePassword)
+		})
+		
+		
+		
+
+		// === Logout === // 
 		r.Post("/logout", func(w http.ResponseWriter, r *http.Request) {
 			utils.RespondWithJSON(w, 200, map[string]string{"message": "logout"})
 		})
-		r.Post("/reset-password", func(w http.ResponseWriter, r *http.Request) {
-			utils.RespondWithJSON(w, 200, map[string]string{"message": "reset password"})
-		})
 
-		// protected: /auth/me
+		// === Protected Profile === //
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
 			r.Get("/me", authHandler.Me)
+			r.Patch("/edit-profile", authHandler.EditProfile)
 		})
 	})
 
@@ -71,6 +134,8 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {
+
+		 r.Post("/chat-agent", chatagent.ChatHandler)
 
 		r.Route("/ws/reports", func(r chi.Router) {
 			r.Use(authMiddleware)
@@ -94,14 +159,24 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 			})
 		})
 
-		r.Route("/notifications", func(r chi.Router) {
-   			 r.Use(authMiddleware)
-    		 r.Get("/my", notifications.GetUserNotifications(db))
-			 r.Patch("/my/{notifId}/read", notifications.MarkAllNotificationsAsRead(db))
-			 r.Patch("/my/read-all", notifications.MarkAllNotificationsAsRead(db))
-			 r.Delete("/my/{notifId}", notifications.DeleteUserNotification(db)) 
-			 r.Delete("/my/all", notifications.DeleteAllUserNotifications(db))
-		})
+		r.Group(func(r chi.Router) {
+		r.Use(auth.AuthMiddleware())
+
+		// Get user notifications
+		r.Get("/api/notifications/user", notifications.GetUserNotifications(db))
+		
+		// Mark single notification as read
+		r.Patch("/api/notifications/{notificationId}/read", notifications.MarkNotificationAsRead(db))
+		
+		// Mark all notifications as read
+		r.Patch("/api/notifications/read-all", notifications.MarkAllNotificationsAsRead(db))
+		
+		// Delete notification
+		r.Delete("/api/notifications/{notificationId}", notifications.DeleteNotification(db))
+		
+		// Delete all notifications
+		r.Delete("/api/notifications/all", notifications.DeleteAllUserNotifications(db))
+	})
 
 		
 
@@ -125,6 +200,7 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 				r.With(auth.RoleMiddleware("admin")).Get("/", reportHandler.GetAll)
 				r.With(auth.RoleMiddleware("admin")).Patch("/{reportId}", reportHandler.Update)
 				r.Delete("/{reportId}", reportHandler.Delete) // hapus laporan
+				r.Get("/{reportId}/actions", actionHandler.GetActionsByReport)
 			})
 
 			// === EVIDENCE nested routes ===
@@ -205,7 +281,43 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 				r.Get("/{reportId}", actionHandler.GetActionsByReport) // Ambil semua tindakan untuk report
 				r.Patch("/{reportId}/complete", actionHandler.MarkActionCompleted) // Update Status Laporan
 			})
+
+			r.Route("/reviews", func(r chi.Router) {
+				r.Post("/", reviewHandler.Create)                    // Create review untuk report
+				r.Get("/", reviewHandler.GetAll)                     // Get all reviews
+				r.Get("/report/{reportId}", reviewHandler.GetByReportID) // Get review by report ID
+				r.Patch("/report/{reportId}", reviewHandler.Update)  // Update review
+				r.Delete("/report/{reportId}", reviewHandler.Delete) // Delete review
+			})
+			r.Route("/ai", func(r chi.Router) {
+				r.Post("/analyze/{reportId}", aiHandler.AnalyzeReport)    // Trigger AI analysis
+				r.Post("/re-analyze/{reportId}", aiHandler.ReAnalyze)     // Re-analyze existing
+				r.Get("/analysis/{reportId}", aiHandler.GetByReportID)    // Get AI analysis by report
+				r.Get("/analyses", aiHandler.GetAllAnalyses)              // Get all AI analyses
+				r.Get("/statistics", aiHandler.GetStatistics)             // AI statistics
+				r.Get("/test-connection", aiHandler.TestGeminiConnection) // Test Mistral API
+			})
+
+			r.Route("/feedbacks", func(r chi.Router) {
+				r.Use(authMiddleware)
+				r.Use(auth.RoleMiddleware("admin"))
+
+				// Feedback management
+				r.Get("/", feedbackHandler.GetAllFeedbacks)                   // List all feedbacks
+				r.Get("/{id}", feedbackHandler.GetFeedbackByID)              // Get feedback detail
+				r.Post("/{id}/respond", feedbackHandler.RespondToFeedback)   // Admin respond to feedback
+				r.Delete("/{id}", feedbackHandler.DeleteFeedback)            // Delete feedback
+
+		// Feedback type management
+			r.Route("/types", func(r chi.Router) {
+				r.Post("/", feedbackTypeHandler.CreateFeedbackType)      // Create feedback type
+				r.Get("/", feedbackTypeHandler.GetAllFeedbackTypes)      // List all types
+				r.Get("/{id}", feedbackTypeHandler.GetFeedbackTypeByID)  // Get type by ID
+				r.Patch("/{id}", feedbackTypeHandler.UpdateFeedbackType) // Update type
+				r.Delete("/{id}", feedbackTypeHandler.DeleteFeedbackType)// Delete type
+			})
 		})
+	})
 	})
 
 	r.Post("/notify", notifications.SendNotification(db))

@@ -62,6 +62,49 @@ func ValidateToken(tokenString string) (string, string, error) {
 	return "", "", errors.New("invalid token claims")
 }
 
+
+
+func ValidateResetToken(tokenString string) (string, string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("invalid signing method")
+		}
+		return jwtSecret, nil
+	})
+	
+	if err != nil || !token.Valid {
+		return "", "", errors.New("invalid token")
+	}
+	
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", errors.New("invalid token claims")
+	}
+	
+	// ✅ Check typ = "reset"
+	typ, _ := claims["typ"].(string)
+	if typ != "reset" {
+		return "", "", errors.New("invalid token type")
+	}
+	
+	// ✅ Extract email (bukan id)
+	email, _ := claims["email"].(string)
+	role, _ := claims["role"].(string)
+	
+	if email == "" || role == "" {
+		return "", "", errors.New("invalid token claims")
+	}
+	
+	// ✅ Check expiration
+	if exp, ok := claims["exp"].(float64); ok {
+		if time.Now().Unix() > int64(exp) {
+			return "", "", errors.New("token expired")
+		}
+	}
+	
+	return email, role, nil
+}
+
 func GenerateRefreshToken(id string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"id":  id,
@@ -91,4 +134,65 @@ func ValidateRefreshToken(tokenString string) (string, error) {
 		}
 	}
 	return "", errors.New("invalid token claims")
+}
+
+func ValidateChangePasswordToken(tokenString string) (string, string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("invalid signing method")
+		}
+		return jwtSecret, nil
+	})
+	
+	if err != nil || !token.Valid {
+		return "", "", errors.New("invalid token")
+	}
+	
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", errors.New("invalid token claims")
+	}
+	
+	// ✅ Check typ = "change_password"
+	typ, _ := claims["typ"].(string)
+	if typ != "change_password" {
+		return "", "", errors.New("invalid token type")
+	}
+	
+	email, _ := claims["email"].(string)
+	role, _ := claims["role"].(string)
+	
+	if email == "" || role == "" {
+		return "", "", errors.New("invalid token claims")
+	}
+	
+	// Check expiration
+	if exp, ok := claims["exp"].(float64); ok {
+		if time.Now().Unix() > int64(exp) {
+			return "", "", errors.New("token expired")
+		}
+	}
+	
+	return email, role, nil
+}
+
+
+
+func GenerateResetToken(email string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"email": email,
+		"role":  "reset",
+		"typ":   "reset",  // ✅ typ = reset
+		"exp":   time.Now().Add(15 * time.Minute).Unix(),
+	})
+	return token.SignedString(jwtSecret)
+}
+func GenerateChangePasswordToken(email string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"email": email,
+		"role":  "change_password",
+		"typ":   "change_password",  // ✅ typ = change_password
+		"exp":   time.Now().Add(15 * time.Minute).Unix(),
+	})
+	return token.SignedString(jwtSecret)
 }

@@ -114,16 +114,17 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 		statusInfo = struct {
 			Title, Message, Type string
 		}{
-			Title:   "📢 Status Laporan Diperbarui",
+			Title:   "Status Laporan Diperbarui",
 			Message: fmt.Sprintf("Status laporan Anda berubah menjadi: %s", newStatus),
 			Type:    "info",
 		}
 	}
 
+	// Handle anonymous users
 	if report.UserID == nil || *report.UserID == "" {
 		fmt.Printf("[INFO] ⚠️ Report #%d tidak memiliki UserID, notifikasi dilewati\n", reportID)
 
-		// ✅ Tambahan: kirim email ke reporter anonymous jika punya email
+		// Send email to anonymous reporter if email exists
 		if report.ReporterType == "anonymous" && report.Email != nil && *report.Email != "" {
 			subject := fmt.Sprintf("📢 Status Laporan #%d Telah Berubah", reportID)
 			body := fmt.Sprintf(`
@@ -149,8 +150,7 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 	channel := fmt.Sprintf("user-%s", *report.UserID)
 	event := "status-updated"
 
-	// 🆕 Perbarui judul & pesan agar menyertakan ID laporan
-	enhancedTitle := fmt.Sprintf("Laporan #%d %s", reportID, statusInfo.Title[8:]) // Hapus kata "Laporan " dari awal
+	enhancedTitle := fmt.Sprintf("Laporan #%d - %s", reportID, statusInfo.Title)
 	enhancedMessage := statusInfo.Message
 
 	payload := map[string]any{
@@ -163,17 +163,18 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 		"timestamp":  time.Now().Unix(),
 	}
 
-	// 1️⃣ Kirim realtime via Pusher
+	// 1️⃣ Kirim realtime via Pusher (untuk web app yang sedang aktif)
 	if err := Client.Trigger(channel, event, payload); err != nil {
-		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi ke %s: %v\n", channel, err)
-		return err
+		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi Pusher ke %s: %v\n", channel, err)
+	} else {
+		fmt.Printf("[PUSHER] ✅ Notifikasi realtime terkirim ke %s\n", channel)
 	}
 
 	// 2️⃣ Simpan ke database
 	notif := models.UserNotification{
 		UserID:    *report.UserID,
-		Title:     enhancedTitle,   // 🆕 sudah berisi "Laporan #ID"
-		Message:   enhancedMessage, // 🆕 sudah berisi "ID: #ID"
+		Title:     enhancedTitle,
+		Message:   enhancedMessage,
 		Type:      statusInfo.Type,
 		ReportID:  &reportID,
 		IsRead:    false,
@@ -183,7 +184,22 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 	if err := db.Create(&notif).Error; err != nil {
 		fmt.Printf("[WARN] ⚠️ Gagal simpan notifikasi user ke DB: %v\n", err)
 	} else {
-		fmt.Printf("[INFO] ✅ Notifikasi user disimpan ke DB untuk user_id=%s (report #%d)\n", *report.UserID, reportID)
+		fmt.Printf("[DB] ✅ Notifikasi disimpan ke DB untuk user_id=%s (report #%d)\n", *report.UserID, reportID)
+	}
+
+	// 3️⃣ Kirim Push Notification via FCM (untuk mobile/background)
+	fcmData := map[string]string{
+		"report_id":  fmt.Sprintf("%d", reportID),
+		"old_status": oldStatus,
+		"new_status": newStatus,
+		"type":       statusInfo.Type,
+		"action":     "status_update",
+	}
+
+	if err := SendPushToUser(db, *report.UserID, enhancedTitle, enhancedMessage, statusInfo.Type, fcmData); err != nil {
+		fmt.Printf("[FCM] ⚠️ Gagal kirim push notification: %v\n", err)
+	} else {
+		fmt.Printf("[FCM] ✅ Push notification terkirim untuk user_id=%s\n", *report.UserID)
 	}
 
 	return nil
@@ -204,27 +220,45 @@ func NotifyNewReport(db *gorm.DB, reportID uint, title string) error {
 		"timestamp": time.Now().Unix(),
 	}
 
-	// 🔹 1. Kirim notifikasi realtime ke admin
+	// 1. Kirim notifikasi realtime ke admin via Pusher
 	if err := Client.Trigger(channel, event, data); err != nil {
 		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi report baru: %v\n", err)
-		return err
 	}
 
-	// 🔹 2. Simpan ke database supaya bisa ditampilkan di halaman notifikasi
+	// 2. Simpan ke database
 	notif := models.Notification{
 		Title:     "🆕 Laporan Baru Masuk",
 		Message:   fmt.Sprintf("Laporan baru: %s", title),
 		Type:      "info",
+		ReportID:  &reportID,
 		CreatedAt: time.Now(),
 	}
 	if err := db.Create(&notif).Error; err != nil {
 		fmt.Printf("[WARN] ⚠️ Gagal simpan notifikasi ke DB: %v\n", err)
 	}
 
+	// 3. Kirim Push Notification ke semua admin
+	fcmData := map[string]string{
+		"report_id": fmt.Sprintf("%d", reportID),
+		"type":      "info",
+		"action":    "new_report",
+	}
+
+	pushTitle := "🆕 Laporan Baru Masuk"
+	pushMessage := fmt.Sprintf("Laporan baru: %s", title)
+
+	if err := SendPushToAdmins(db, pushTitle, pushMessage, fcmData); err != nil {
+		fmt.Printf("[FCM] ⚠️ Gagal kirim push ke admin: %v\n", err)
+	} else {
+		fmt.Printf("[FCM] ✅ Push notification terkirim ke admin\n")
+	}
+
 	fmt.Printf("[INFO] ✅ Admin di-notifikasi tentang report baru #%d\n", reportID)
 	return nil
 }
 
+
+// ✅ FUNGSI TAMBAHAN: Notifikasi saat ada pesan chat baru
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada pesan chat baru
 func NotifyNewChatMessage(db *gorm.DB, reportID uint, senderID, message string, isFromAdmin bool) error {
 	var report models.Report
@@ -234,15 +268,18 @@ func NotifyNewChatMessage(db *gorm.DB, reportID uint, senderID, message string, 
 
 	var channel string
 	var title, notifMessage string
+	var targetUserID string
 
 	if isFromAdmin {
 		// Notifikasi ke user (reporter)
 		if report.UserID != nil && *report.UserID != "" {
 			channel = fmt.Sprintf("user-%s", *report.UserID)
+			targetUserID = *report.UserID
 			title = "💬 Pesan Baru dari Admin"
 			notifMessage = "Admin telah membalas laporan Anda"
 		} else {
 			// Skip untuk anonymous user
+			fmt.Printf("[INFO] ℹ️ Report #%d adalah anonymous, skip notifikasi ke user\n", reportID)
 			return nil
 		}
 	} else {
@@ -254,28 +291,88 @@ func NotifyNewChatMessage(db *gorm.DB, reportID uint, senderID, message string, 
 
 	event := "new-message"
 
-	// Ambil preview maksimal 50 karakter
+	// Preview maksimal 50 karakter
 	preview := message
 	if len(message) > 50 {
-		preview = message[:50]
+		preview = message[:50] + "..."
 	}
 
 	data := map[string]any{
-		"title":      title,
-		"message":    notifMessage,
-		"type":       "info",
-		"report_id":  reportID,
-		"sender_id":  senderID,
-		"preview":    preview,
-		"timestamp":  time.Now().Unix(),
+		"title":     title,
+		"message":   notifMessage,
+		"type":      "info",
+		"report_id": reportID,
+		"sender_id": senderID,
+		"preview":   preview,
+		"timestamp": time.Now().Unix(),
 	}
 
+	// 1️⃣ Kirim realtime via Pusher
 	if err := Client.Trigger(channel, event, data); err != nil {
-		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi chat: %v\n", err)
-		return err
+		fmt.Printf("[PUSHER ERROR] ❌ Gagal kirim notifikasi chat: %v\n", err)
+	} else {
+		fmt.Printf("[PUSHER] ✅ Notifikasi chat realtime terkirim ke %s\n", channel)
 	}
 
-	fmt.Printf("[INFO] ✅ Notifikasi chat terkirim ke %s (Report #%d)\n", channel, reportID)
+	// 2️⃣ Simpan notifikasi ke database
+	if isFromAdmin && targetUserID != "" {
+		// Simpan ke UserNotification untuk user
+		userNotif := models.UserNotification{
+			UserID:    targetUserID,
+			Title:     title,
+			Message:   notifMessage,
+			Type:      "info",
+			ReportID:  &reportID,
+			IsRead:    false,
+			CreatedAt: time.Now(),
+		}
+		if err := db.Create(&userNotif).Error; err != nil {
+			fmt.Printf("[DB WARN] ⚠️ Gagal simpan user notification: %v\n", err)
+		} else {
+			fmt.Printf("[DB] ✅ User notification disimpan untuk user %s\n", targetUserID)
+		}
+	} else if !isFromAdmin {
+		// Simpan ke Notification untuk admin
+		adminNotif := models.Notification{
+			Title:     title,
+			Message:   notifMessage,
+			Type:      "info",
+			ReportID:  &reportID,
+			CreatedAt: time.Now(),
+		}
+		if err := db.Create(&adminNotif).Error; err != nil {
+			fmt.Printf("[DB WARN] ⚠️ Gagal simpan admin notification: %v\n", err)
+		} else {
+			fmt.Printf("[DB] ✅ Admin notification disimpan\n")
+		}
+	}
+
+	// 3️⃣ Kirim Push Notification via FCM
+	fcmData := map[string]string{
+		"report_id": fmt.Sprintf("%d", reportID),
+		"sender_id": senderID,
+		"type":      "info",
+		"action":    "new_message",
+		"preview":   preview,
+	}
+
+	if isFromAdmin && targetUserID != "" {
+		// Push ke user
+		if err := SendPushToUser(db, targetUserID, title, notifMessage, "info", fcmData); err != nil {
+			fmt.Printf("[FCM] ⚠️ Gagal kirim push ke user: %v\n", err)
+		} else {
+			fmt.Printf("[FCM] ✅ Push notification terkirim ke user %s\n", targetUserID)
+		}
+	} else if !isFromAdmin {
+		// Push ke admin
+		if err := SendPushToAdmins(db, title, notifMessage, fcmData); err != nil {
+			fmt.Printf("[FCM] ⚠️ Gagal kirim push ke admin: %v\n", err)
+		} else {
+			fmt.Printf("[FCM] ✅ Push notification terkirim ke admin\n")
+		}
+	}
+
+	fmt.Printf("[INFO] ✅ Notifikasi chat lengkap terkirim untuk Report #%d\n", reportID)
 	return nil
 }
 
@@ -451,3 +548,208 @@ func DeleteAllUserNotifications(db *gorm.DB) http.HandlerFunc {
 }
 
 
+
+// Tambahkan fungsi ini ke file: internal/notifications/handler.go
+
+// NotifyAIAnalysisComplete sends notification when AI analysis is completed
+func NotifyAIAnalysisComplete(db *gorm.DB, reportID uint, verdict string, confidence float64) error {
+	var report models.Report
+	if err := db.Preload("User").First(&report, reportID).Error; err != nil {
+		fmt.Printf("[ERROR] Report #%d tidak ditemukan: %v\n", reportID, err)
+		return err
+	}
+
+	verdictMessages := map[string]struct {
+		Title   string
+		Message string
+		Type    string
+		Emoji   string
+	}{
+		"verified": {
+			Title:   "Laporan Terverifikasi",
+			Message: "Laporan Anda telah diverifikasi oleh sistem AI sebagai valid dan kredibel",
+			Type:    "success",
+			Emoji:   "✅",
+		},
+		"hoax": {
+			Title:   "Laporan Tidak Terverifikasi",
+			Message: "Sistem AI mendeteksi laporan ini mengandung informasi yang tidak dapat diverifikasi",
+			Type:    "warning",
+			Emoji:   "⚠️",
+		},
+		"unconfirmed": {
+			Title:   "Laporan Memerlukan Investigasi Lebih Lanjut",
+			Message: "Laporan Anda memerlukan investigasi manual lebih lanjut oleh tim kami",
+			Type:    "info",
+			Emoji:   "🔍",
+		},
+	}
+
+	verdictInfo, exists := verdictMessages[verdict]
+	if !exists {
+		verdictInfo = verdictMessages["unconfirmed"]
+	}
+
+	if report.UserID == nil || *report.UserID == "" {
+		fmt.Printf("[INFO] ⚠️ Report #%d tidak memiliki UserID, notifikasi AI dilewati\n", reportID)
+
+		// Send email to anonymous reporter
+		if report.Email != nil && *report.Email != "" {
+			subject := fmt.Sprintf("%s Hasil Analisis AI - Laporan #%d", verdictInfo.Emoji, reportID)
+			body := fmt.Sprintf(`
+				<h2>%s</h2>
+				<p>%s</p>
+				<hr>
+				<p><strong>ID Laporan:</strong> #%d</p>
+				<p><strong>Tingkat Keyakinan AI:</strong> %.1f%%</p>
+				<p><strong>Hasil Verifikasi:</strong> %s</p>
+				<p style="color: gray; font-size: 12px;">Email ini dikirim otomatis oleh sistem Whistleblower AI.</p>
+			`, verdictInfo.Title, verdictInfo.Message, reportID, confidence, verdict)
+
+			if err := utils.SendEmail(*report.Email, subject, body); err != nil {
+				fmt.Printf("[EMAIL ERROR] gagal kirim ke %s: %v\n", *report.Email, err)
+			}
+		}
+
+		return nil
+	}
+
+	channel := fmt.Sprintf("user-%s", *report.UserID)
+	event := "ai-analysis-complete"
+
+	enhancedTitle := fmt.Sprintf("%s Laporan #%d - %s", verdictInfo.Emoji, reportID, verdictInfo.Title)
+	enhancedMessage := fmt.Sprintf("%s (Tingkat keyakinan AI: %.1f%%)", verdictInfo.Message, confidence)
+
+	payload := map[string]any{
+		"title":      enhancedTitle,
+		"message":    enhancedMessage,
+		"type":       verdictInfo.Type,
+		"report_id":  reportID,
+		"verdict":    verdict,
+		"confidence": confidence,
+		"timestamp":  time.Now().Unix(),
+	}
+
+	// Kirim realtime via Pusher
+	if err := Client.Trigger(channel, event, payload); err != nil {
+		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi AI ke %s: %v\n", channel, err)
+	}
+
+	// Simpan ke database
+	notif := models.UserNotification{
+		UserID:    *report.UserID,
+		Title:     enhancedTitle,
+		Message:   enhancedMessage,
+		Type:      verdictInfo.Type,
+		ReportID:  &reportID,
+		IsRead:    false,
+		CreatedAt: time.Now(),
+	}
+
+	if err := db.Create(&notif).Error; err != nil {
+		fmt.Printf("[WARN] ⚠️ Gagal simpan notifikasi AI ke DB: %v\n", err)
+	}
+
+	// Kirim Push Notification
+	fcmData := map[string]string{
+		"report_id":  fmt.Sprintf("%d", reportID),
+		"verdict":    verdict,
+		"confidence": fmt.Sprintf("%.1f", confidence),
+		"type":       verdictInfo.Type,
+		"action":     "ai_analysis",
+	}
+
+	if err := SendPushToUser(db, *report.UserID, enhancedTitle, enhancedMessage, verdictInfo.Type, fcmData); err != nil {
+		fmt.Printf("[FCM] ⚠️ Gagal kirim push notification AI: %v\n", err)
+	} else {
+		fmt.Printf("[FCM] ✅ Push notification AI terkirim untuk user_id=%s\n", *report.UserID)
+	}
+
+	// Notify admins
+	go notifyAdminsAboutAIResult(db, reportID, report.Title, verdict, confidence)
+
+	return nil
+}
+
+// notifyAdminsAboutAIResult sends notification to admin channel about AI analysis result
+func notifyAdminsAboutAIResult(db *gorm.DB, reportID uint, title, verdict string, confidence float64) {
+	channel := "admin-notifications"
+	event := "ai-analysis-result"
+
+	var emoji string
+	var message string
+
+	switch verdict {
+	case "verified":
+		emoji = "✅"
+		message = fmt.Sprintf("AI memverifikasi laporan: %s", title)
+	case "hoax":
+		emoji = "⚠️"
+		message = fmt.Sprintf("AI mendeteksi hoax: %s", title)
+	default:
+		emoji = "🔍"
+		message = fmt.Sprintf("AI memerlukan review manual: %s", title)
+	}
+
+	data := map[string]any{
+		"title":      fmt.Sprintf("%s Hasil Analisis AI - Laporan #%d", emoji, reportID),
+		"message":    message,
+		"type":       "info",
+		"report_id":  reportID,
+		"verdict":    verdict,
+		"confidence": confidence,
+		"timestamp":  time.Now().Unix(),
+	}
+
+	if err := Client.Trigger(channel, event, data); err != nil {
+		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi AI ke admin: %v\n", err)
+		return
+	}
+
+	// Save to admin notifications table
+	notif := models.Notification{
+		Title:     fmt.Sprintf("%s Hasil Analisis AI", emoji),
+		Message:   message,
+		Type:      "info",
+		ReportID:  &reportID,
+		CreatedAt: time.Now(),
+	}
+
+	if err := db.Create(&notif).Error; err != nil {
+		fmt.Printf("[WARN] ⚠️ Gagal simpan notifikasi AI admin ke DB: %v\n", err)
+	}
+
+	fmt.Printf("[INFO] ✅ Admin notified tentang AI result #%d (verdict: %s)\n", reportID, verdict)
+}
+
+// Notify Admin untuk chat agent
+// NotifyChatAgentHandoff notifies admin when a user requests human support
+func NotifyChatAgentHandoff(userID string, message string) error {
+
+	channel := "admin-notifications"
+	event := "chatagent-handoff"
+
+	// batasi preview max 80 char
+	preview := message
+	if len(preview) > 80 {
+		preview = preview[:80] + "..."
+	}
+
+	payload := map[string]any{
+		"title":     "👤 Pengguna Meminta Bantuan Admin",
+		"message":   fmt.Sprintf("User meminta bantuan CS: \"%s\"", preview),
+		"type":      "info",
+		"user_id":   userID,
+		"source":    "chat_agent",
+		"timestamp": time.Now().Unix(),
+	}
+
+	// Kirim realtime ke admin
+	if err := Client.Trigger(channel, event, payload); err != nil {
+		fmt.Printf("[ERROR] ❌ Gagal kirim notifikasi Chat Agent ke admin: %v\n", err)
+		return err
+	}
+
+	fmt.Printf("[CHAT AGENT] ⚡ Admin diberi tahu bahwa user %s meminta bantuan\n", userID)
+	return nil
+}

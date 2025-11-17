@@ -12,6 +12,7 @@ import (
 	"whistleblower_REST/internal/utils"
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/websocket" 
+	"whistleblower_REST/internal/notifications"
 )
 
 type Handler struct {
@@ -65,8 +66,8 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawID := r.Context().Value("id") // ✅ konsisten: rawID
-	fmt.Printf("🔍 Raw ID from context: %#v (type: %T)\n", rawID, rawID)
+	rawID := r.Context().Value("id")
+	fmt.Printf("📝 Raw ID from context: %#v (type: %T)\n", rawID, rawID)
 
 	uid, ok := rawID.(string)
 	if !ok || uid == "" {
@@ -92,9 +93,33 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// 🟢 Broadcast pesan baru via WebSocket
+	if h.Hub != nil {
+		msgJSON, _ := json.Marshal(msg)
+		h.Hub.Broadcast(rid, msgJSON)
+		fmt.Printf("📤 Broadcasted new message via HTTP: id=%s, sender=%s\n", msg.ID, uid)
+	}
+
+	// ✅ TAMBAHAN: Kirim notifikasi push & realtime
+	// Cek apakah sender adalah admin atau user
+	var user models.User
+	isAdmin := false
+	if err := h.DB.First(&user, "id = ?", uid).Error; err == nil {
+		isAdmin = (user.Role == "admin")
+	}
+
+	// Kirim notifikasi (asynchronous untuk performa)
+	go func() {
+		if err := notifications.NotifyNewChatMessage(h.DB, rid, uid, in.Message, isAdmin); err != nil {
+			fmt.Printf("[NOTIFY ERROR] Failed to send chat notification: %v\n", err)
+		} else {
+			fmt.Printf("[NOTIFY] ✅ Chat notification sent for report #%d\n", rid)
+		}
+	}()
+
 	utils.RespondWithJSON(w, http.StatusCreated, msg)
 }
-
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	ridStr := chi.URLParam(r, "reportId")
@@ -123,6 +148,9 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	utils.RespondWithJSON(w, http.StatusOK, msg)
 }
+
+
+
 
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -208,17 +236,20 @@ func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
 	if h.Hub != nil {
 		payload := map[string]any{
 			"type":       "read_status",
-			"report_id":  rid,
 			"message_id": msg.ID,
+			"report_id":  rid,
+			"reader_id":  currentUserID,
 			"is_read":    true,
-			"read_at":    msg.ReadAt,
+			"read_at":    now.Format(time.RFC3339),
 		}
 		data, _ := json.Marshal(payload)
 		h.Hub.Broadcast(rid, data)
+		fmt.Printf("📤 Broadcasted read_status via HTTP: message=%s, reader=%s\n", msg.ID, currentUserID)
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, msg)
 }
+
 
 // ✅ Mark all messages in a report as read
 func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) {
@@ -256,14 +287,15 @@ func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) 
 	// 🟢 Broadcast event "semua pesan dibaca"
 	if h.Hub != nil {
 		payload := map[string]any{
-			"type":       "messages_read_all",
-			"report_id":  rid,
-			"user_id":    currentUserID,
-			"read_at":    now,
-			"rows_count": result.RowsAffected,
+			"type":      "messages_read_all",
+			"report_id": rid,
+			"user_id":   currentUserID,
+			"read_at":   now.Format(time.RFC3339),
+			"count":     result.RowsAffected,
 		}
 		data, _ := json.Marshal(payload)
 		h.Hub.Broadcast(rid, data)
+		fmt.Printf("📤 Broadcasted messages_read_all via HTTP: reader=%s, count=%d\n", currentUserID, result.RowsAffected)
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, map[string]any{
@@ -271,6 +303,7 @@ func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) 
 		"rows_affected": result.RowsAffected,
 	})
 }
+
 // ✅ Get unread message count for a report
 func (h *Handler) GetUnreadCount(w http.ResponseWriter, r *http.Request) {
 	ridStr := chi.URLParam(r, "reportId")
@@ -396,11 +429,30 @@ func (h *Handler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update message
+	now := time.Now()
 	msg.Message = input.Message
-	
+	// Do not assign EditedAt (models.Message has no EditedAt field);
+	// rely on GORM to update UpdatedAt when saving the record.
+	_ = now
+
 	if err := h.DB.Save(&msg).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "failed to update message")
 		return
+	}
+
+	if h.Hub != nil {
+		payload := map[string]any{
+			"type":       "message_edited",
+			"report_id":  rid,
+			"message_id": msg.ID,
+			"message":    msg.Message,
+			"is_edited":  true,
+			"edited_at":  now,
+		}
+		data, _ := json.Marshal(payload)
+		h.Hub.Broadcast(rid, data)
+		
+		fmt.Printf("✅ Broadcasted message_edited: message=%s\n", mid)
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, msg)

@@ -2,12 +2,14 @@ package websocket
 
 import (
 	"sync"
+	"github.com/gorilla/websocket"
 )
 
 type Client struct {
 	ReportID uint
 	UserID   string
 	Send     chan []byte
+	Conn    *websocket.Conn
 }
 
 type Hub struct {
@@ -46,6 +48,19 @@ func (h *Hub) Broadcast(reportID uint, message []byte) {
 		select {
 		case c.Send <- message:
 		default:
+		}
+	}
+}
+
+func (h *Hub) BroadcastExcept(reportID uint, excludeClient *Client, message []byte) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, c := range h.clients[reportID] {
+		if c != excludeClient {
+			select {
+			case c.Send <- message:
+			default:
+			}
 		}
 	}
 }
