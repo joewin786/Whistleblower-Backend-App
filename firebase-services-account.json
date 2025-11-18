@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "whistleblower-42b6e",
+  "private_key_id": "98253cb40cf29bb0a67505d81c2456669084c4e5",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC1vxkhij/s80L4\nhIr621y2YzVBZB99gt9TaWCX4g4BKXZPOb1vIaFZJ4hs3V5zYfef/FOX0L1s7DNe\nbWpX7PzolEpJVJ/SlBQKg1IMLIzls3QeEIULA/UUqeFsIhzZuViWnoZwp29Hu+H5\nNEXdBR7NB1stWY9yDlCCVSbc6XnV6BHXvathSm5+KaU/9BkcPORskV28kdEkthUN\na/8wyxHnMQGF6dQY2uKo1RJlVeUYlt2zIk+CTS+IzAhn7XH+XFTf6ZAPKskHzraj\nSLZRrT+51YI5QcPnIOP9+eaBv7Fr23ywo3FVKFrBCt0/UsA6dz6BxL6tbjLfcExP\n8/Aqdo4lAgMBAAECggEACk1p3Efc9c6YVkQVKME0kTYwd6N4UYIQrMbFbfanepNi\nHH2Wam1KmyYtipZF216LTetcxbdUdY8yHkEvjQpnD7wQNfXxFVvFgw8MoJoJ5p90\njpu7HvO7ec9jcuDAJ+tkxSz5S/uByFwzJBA9gZjftRmcpoZ0Ji//ilPPXyhw+poT\nqFT3xJzW2XaiBvXPsBC5ddRGU5K4WpLr/IQWJ2L6hDMaIxic7K4q4D7Y10qVEfXy\nW3fQyy77Xjll0VzJE7APRT9lEvOgnOkkZ0EBlcFjVpLCJsNWNaqVm8GMS9SMkkU4\nSKnrrl2teYvVTH360m6p9FpO/T+hTVZ9XNzMepBegQKBgQDfrIMGCgVVFWiTYXk+\n1kvr+26kd94cPbLMu50DdH1TaDR+DtlSlql68pLTD3D/MpxVwv8pyNTi7ZNX0a56\n2JbAKf4DwfRClZCRKGho0ip4FxQCQAwqMjkdU/h41zSNP/NPeMeIzXCAm9hiy1wX\n4r1RMkGsEu/jRkYicU7jlaOd4QKBgQDQA1sqFxKxv3p46tNtD0Rz9YeY0oPjZXF/\n5k3efDVbUpDaamb8fg1Tsxum5b+pbVD9rSUgsbLVp12fYD98hjx0BrSa0VVtQdDn\nFtwcPnY7Vojxo4VUuktmlJBYAJ9fg+tO7FHbsXPrA0W3AJbZ7eqM+TgBnQAZXlR+\nrGX5H7AQxQKBgQDJa+edo56DrUC8H7X4oTBDdOuBDjSlB+aguX6+osNNPfSvZB3O\nYsCCaDlR+YDPPztLe8seTK1xIXJjTf6qv6qZp/cIWTvmThuerF3Bryjxdg7dq+GI\niiumvnxuDZZUcLdh5KkDB8X8+trUtL7c/6FuoixDkdYWu6zizVi2V4W84QKBgDwj\n/EObECib98jl++LYOy5bmqywkLk6JyqXZ4Qf3T1eDctYYBY4S5obeq8yVcuic3wk\nh0uAlPf4v7TImxJhrTDOj4EDbPN9x+xIS7NOy9g0GLvkTzRD+HDcGy+WXn27Illb\nMf+WurED7TAP142CoAHKPEsbHWA4Sa2mIoV4h+sRAoGBAKq3ijQqxuPWsb2xtVaR\nSVfC34ObBzufsPwEInq+mHDp/N3ueDiDIOPYfKAVTvx4er1Yjo80+kHHlgReJ3OG\noDfnurdXduy0aC0QtTWNBL7LEqUKZkkjwRXDKIG+d8OLWrm9CN+Y+RX3/gOrKzaw\nE/suUEA2u60gUoOagt+rdalm\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@whistleblower-42b6e.iam.gserviceaccount.com",
+  "client_id": "116590644798951977819",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40whistleblower-42b6e.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
