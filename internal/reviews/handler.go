@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/utils"
 
@@ -25,15 +26,17 @@ func NewHandler(db *gorm.DB) *Handler {
 // Create creates a new review for a report
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	// Get admin ID from context
-	adminID, ok := r.Context().Value("id").(string)
-	if !ok || adminID == "" {
+	var adminID uint
+	if adminIDUint, ok := auth.GetAdminIDFromContext(r.Context()); ok {
+		adminID = adminIDUint
+	} else {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized: admin ID not found")
 		return
 	}
 
 	// Check if user is admin
-	role, _ := r.Context().Value("role").(string)
-	if role != "admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if role != "admin" && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: only admins can create reviews")
 		return
 	}
@@ -128,9 +131,11 @@ func (h *Handler) GetByReportID(w http.ResponseWriter, r *http.Request) {
 // Update updates an existing review
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	// Get admin ID from context
-	adminID, ok := r.Context().Value("id").(string)
-	if !ok || adminID == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
+	var adminID uint
+	if adminIDUint, ok := auth.GetAdminIDFromContext(r.Context()); ok {
+		adminID = adminIDUint
+	} else {
+		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized: admin ID not found")
 		return
 	}
 
@@ -159,8 +164,8 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if admin owns this review or is super admin
-	role, _ := r.Context().Value("role").(string)
-	if review.AdminID != adminID && role != "super_admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if review.AdminID != adminID && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "you can only update your own reviews")
 		return
 	}
@@ -223,9 +228,11 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete deletes a review (admin only)
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	adminID, ok := r.Context().Value("id").(string)
-	if !ok || adminID == "" {
-		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
+	var adminID uint
+	if adminIDUint, ok := auth.GetAdminIDFromContext(r.Context()); ok {
+		adminID = adminIDUint
+	} else {
+		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized: admin ID not found")
 		return
 	}
 
@@ -248,8 +255,8 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership
-	role, _ := r.Context().Value("role").(string)
-	if review.AdminID != adminID && role != "super_admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if review.AdminID != adminID && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "you can only delete your own reviews")
 		return
 	}
@@ -268,8 +275,8 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // GetAll gets all reviews (admin only) with pagination
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
-	role, _ := r.Context().Value("role").(string)
-	if role != "admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if role != "admin" && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: admin only")
 		return
 	}

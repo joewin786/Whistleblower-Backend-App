@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/utils"
 
@@ -16,7 +17,7 @@ type CategoryHandler struct {
 }
 
 func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
-	role, ok := r.Context().Value("role").(string)
+	role, ok := auth.GetRoleFromContext(r.Context())
 	if !ok || role != "admin" {
 		utils.RespondWithError(w, http.StatusForbidden, "Access denied. Only admins can create categories.")
 		return
@@ -67,7 +68,7 @@ func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
-	role, ok := r.Context().Value("role").(string)
+	role, ok := auth.GetRoleFromContext(r.Context())
 	if !ok || role != "admin" {
 		utils.RespondWithError(w, http.StatusForbidden, "Access denied. Only admins can update categories.")
 		return
@@ -112,7 +113,7 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
-	role, ok := r.Context().Value("role").(string)
+	role, ok := auth.GetRoleFromContext(r.Context())
 	if !ok || role != "admin" {
 		utils.RespondWithError(w, http.StatusForbidden, "Access denied. Only admins can delete categories.")
 		return

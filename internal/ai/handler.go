@@ -1,12 +1,12 @@
 package ai
 
 import (
-	
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/notifications"
 	"whistleblower_REST/internal/utils"
@@ -30,8 +30,8 @@ func NewHandler(db *gorm.DB) *Handler {
 // AnalyzeReport triggers AI analysis for a reviewed report
 func (h *Handler) AnalyzeReport(w http.ResponseWriter, r *http.Request) {
 	// Check admin role
-	role, _ := r.Context().Value("role").(string)
-	if role != "admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if role != "admin" && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: only admins can trigger AI analysis")
 		return
 	}
@@ -157,8 +157,8 @@ func (h *Handler) GetByReportID(w http.ResponseWriter, r *http.Request) {
 
 // ReAnalyze triggers re-analysis for a report (overwrites existing analysis)
 func (h *Handler) ReAnalyze(w http.ResponseWriter, r *http.Request) {
-	role, _ := r.Context().Value("role").(string)
-	if role != "admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if role != "admin" && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: admin only")
 		return
 	}
@@ -228,8 +228,8 @@ func (h *Handler) ReAnalyze(w http.ResponseWriter, r *http.Request) {
 
 // GetAllAnalyses gets all AI analyses with pagination (admin only)
 func (h *Handler) GetAllAnalyses(w http.ResponseWriter, r *http.Request) {
-	role, _ := r.Context().Value("role").(string)
-	if role != "admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if role != "admin" && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: admin only")
 		return
 	}
@@ -251,10 +251,10 @@ func (h *Handler) GetAllAnalyses(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate statistics
 	stats := map[string]interface{}{
-		"total":       len(analyses),
-		"verified":    0,
-		"hoax":        0,
-		"unconfirmed": 0,
+		"total":          len(analyses),
+		"verified":       0,
+		"hoax":           0,
+		"unconfirmed":    0,
 		"avg_confidence": 0.0,
 	}
 
@@ -283,8 +283,8 @@ func (h *Handler) GetAllAnalyses(w http.ResponseWriter, r *http.Request) {
 
 // GetStatistics returns AI analysis statistics
 func (h *Handler) GetStatistics(w http.ResponseWriter, r *http.Request) {
-	role, _ := r.Context().Value("role").(string)
-	if role != "admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if role != "admin" && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: admin only")
 		return
 	}
@@ -315,8 +315,8 @@ func (h *Handler) GetStatistics(w http.ResponseWriter, r *http.Request) {
 
 // TestGeminiConnection tests if Gemini AI is properly configured
 func (h *Handler) TestGeminiConnection(w http.ResponseWriter, r *http.Request) {
-	role, _ := r.Context().Value("role").(string)
-	if role != "admin" {
+	role, _ := auth.GetRoleFromContext(r.Context())
+	if role != "admin" && role != "superadmin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: admin only")
 		return
 	}

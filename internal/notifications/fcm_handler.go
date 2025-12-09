@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/utils"
 
@@ -23,7 +24,7 @@ type RegisterDeviceRequest struct {
 // RegisterDevice registers a user's device for push notifications
 func RegisterDevice(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
@@ -90,7 +91,7 @@ func RegisterDevice(db *gorm.DB) http.HandlerFunc {
 // UnregisterDevice removes a device token
 func UnregisterDevice(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
@@ -124,7 +125,7 @@ func UnregisterDevice(db *gorm.DB) http.HandlerFunc {
 // GetUserDevices returns all registered devices for a user
 func GetUserDevices(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
@@ -237,7 +238,7 @@ func SendPushToAdmins(db *gorm.DB, title, message string, data map[string]string
 // TestPushNotification sends a test notification (for debugging)
 func TestPushNotification(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
@@ -274,7 +275,7 @@ func TestPushNotification(db *gorm.DB) http.HandlerFunc {
 // DeleteDevice permanently removes a device
 func DeleteDevice(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return

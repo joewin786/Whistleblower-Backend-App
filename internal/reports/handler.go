@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/models"
+	"whistleblower_REST/internal/notifications"
 	"whistleblower_REST/internal/utils"
-	"whistleblower_REST/internal/notifications" 
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
@@ -45,8 +46,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Ambil ID user dari context (jika login)
 	var uid string
-	v := r.Context().Value("id")
-	if idStr, ok := v.(string); ok && idStr != "" {
+	if idStr, ok := auth.GetIDFromContext(r.Context()); ok && idStr != "" {
 		uid = idStr
 	}
 
@@ -127,16 +127,16 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 	// ✅ Bentuk response dengan nama pelapor sesuai tipe
 	type ReportResponse struct {
-		ID           uint       `json:"id"`
-		Title        string     `json:"title"`
-		Description  string     `json:"description"`
-		Category     string     `json:"category"`
-		Status       string     `json:"status"`
-		ReporterType string     `json:"reporter_type"`
-		ReporterName string     `json:"reporter_name"`
-		Email        *string    `json:"email,omitempty"`
-		CreatedAt    time.Time  `json:"created_at"`
-		UpdatedAt    time.Time  `json:"updated_at"`
+		ID           uint      `json:"id"`
+		Title        string    `json:"title"`
+		Description  string    `json:"description"`
+		Category     string    `json:"category"`
+		Status       string    `json:"status"`
+		ReporterType string    `json:"reporter_type"`
+		ReporterName string    `json:"reporter_name"`
+		Email        *string   `json:"email,omitempty"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
 	}
 
 	var out []ReportResponse
@@ -165,16 +165,12 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, out)
 }
 
-
-
-
 // ==============================
 // GET USER'S OWN REPORTS
 // ==============================
 func (h *Handler) GetMy(w http.ResponseWriter, r *http.Request) {
-	v := r.Context().Value("id")
-	uid, _ := v.(string)
-	if uid == "" {
+	uid, ok := auth.GetIDFromContext(r.Context())
+	if !ok || uid == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -223,8 +219,8 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ambil role dari context
-	role, _ := r.Context().Value("role").(string)
+	// Ambil role admin
+	role, _ := auth.GetRoleFromContext(r.Context())
 	if role != "admin" {
 		utils.RespondWithError(w, http.StatusForbidden, "forbidden: only admin can update report status")
 		return
@@ -236,7 +232,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ✅ Ambil status LAMA sebelum update (untuk notifikasi)
+	// Ambil status LAMA
 	var oldReport models.Report
 	if err := h.DB.First(&oldReport, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -246,7 +242,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	oldStatus := oldReport.Status
+
+	// 🚫 RULE BARU:
+	// Jika laporan sudah dismissed → tidak boleh update lagi
+	if oldReport.Status == models.StatusDismissed || oldReport.Status == models.StatusResolved {
+		utils.RespondWithError(w, http.StatusForbidden,
+			"cannot update: this report has been closed and can no longer be modified")
+		return
+	}
 
 	updates := map[string]any{
 		"updated_at": time.Now(),
@@ -276,35 +281,28 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// === Jika status berubah jadi 'under_review', set handle_at di tabel actions ===
+	// Set handle_at jika masuk under_review
 	if in.Status != nil && *in.Status == models.StatusUnderReview {
 		now := time.Now()
 		h.DB.Model(&models.Action{}).
 			Where("report_id = ?", id).
 			Update("handle_at", now)
-		fmt.Printf("[INFO] Laporan #%d mulai ditangani pada %s\n", id, now.Format(time.RFC3339))
 	}
 
-	// ✅ KIRIM NOTIFIKASI OTOMATIS jika status berubah
+	// Kirim notifikasi jika status berubah
 	if in.Status != nil && oldStatus != *in.Status {
-		newStatus := *in.Status
-		
-		// Panggil fungsi notifikasi yang sudah ada
-		if err := notifications.NotifyStatusChange(h.DB, id, oldStatus, newStatus); err != nil {
-			// Log error tapi jangan gagalkan request
+		if err := notifications.NotifyStatusChange(h.DB, id, oldStatus, *in.Status); err != nil {
 			fmt.Printf("[WARN] ⚠️ Gagal kirim notifikasi status change: %v\n", err)
 		}
 	}
 
-	fmt.Printf("[INFO] Status laporan #%d diperbarui dari '%s' menjadi '%s' oleh admin\n", 
-		id, oldStatus, *in.Status)
-	
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{
-		"message": "report updated successfully",
+		"message":    "report updated successfully",
 		"old_status": oldStatus,
 		"new_status": *in.Status,
 	})
 }
+
 
 // ==============================
 // ASSIGN ADMIN TO REPORT (public allowed)
@@ -414,7 +412,7 @@ func parseUintID(s string) (uint, bool) {
 
 func isValidStatus(st string) bool {
 	switch st {
-	case models.StatusSubmitted, models.StatusUnderReview, models.StatusResolved, models.StatusDismissed:
+	case models.StatusSubmitted, models.StatusUnderReview, models.StatusOnProcess, models.StatusResolved, models.StatusDismissed:
 		return true
 	default:
 		return false

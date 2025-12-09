@@ -5,8 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"time"
-	"whistleblower_REST/internal/utils"
 	"whistleblower_REST/internal/models"
+	"whistleblower_REST/internal/utils"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -49,11 +50,8 @@ type MeResponse struct {
 }
 
 type UpdateProfileRequest struct {
-    Name string `json:"name" binding:"required"`
+	Name string `json:"name" binding:"required"`
 }
-
-
-
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var input RegisterRequest
@@ -138,13 +136,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// Ambil data dari context (sudah diinject AuthMiddleware)
-	id, ok := r.Context().Value("id").(string)
+	id, ok := GetIDFromContext(r.Context())
 	if !ok || id == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	role, _ := r.Context().Value("role").(string)
+	role, _ := GetRoleFromContext(r.Context())
 
 	var user models.User
 	if err := h.DB.Select("id", "name", "email", "role", "created_at", "updated_at").
@@ -170,7 +168,6 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	utils.RespondWithJSON(w, http.StatusOK, resp)
 }
-
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req RefreshTokenRequest
@@ -227,44 +224,43 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) EditProfile(w http.ResponseWriter, r *http.Request) {
-    id, ok := r.Context().Value("id").(string)
-    if !ok || id == "" {
-        utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
-        return
-    }
+	id, ok := GetIDFromContext(r.Context())
+	if !ok || id == "" {
+		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
-    var req UpdateProfileRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-        utils.RespondWithError(w, http.StatusBadRequest, "Invalid request. Name is required.")
-        return
-    }
+	var req UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request. Name is required.")
+		return
+	}
 
-    // Cari user
-    var user models.User
-    if err := h.DB.Where("id = ?", id).First(&user).Error; err != nil {
-        utils.RespondWithError(w, http.StatusNotFound, "User not found")
-        return
-    }
+	// Cari user
+	var user models.User
+	if err := h.DB.Where("id = ?", id).First(&user).Error; err != nil {
+		utils.RespondWithError(w, http.StatusNotFound, "User not found")
+		return
+	}
 
-    // Update field
-    user.Name = req.Name
-    user.UpdatedAt = time.Now()
+	// Update field
+	user.Name = req.Name
+	user.UpdatedAt = time.Now()
 
-    if err := h.DB.Save(&user).Error; err != nil {
-        utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update profile")
-        return
-    }
+	if err := h.DB.Save(&user).Error; err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update profile")
+		return
+	}
 
-    utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
-        "message": "Profile updated successfully",
-        "user": map[string]interface{}{
-            "id":        user.ID,
-            "name":      user.Name,
-            "email":     user.Email,
-            "role":      user.Role,
-            "createdAt": user.CreatedAt,
-            "updatedAt": user.UpdatedAt,
-        },
-    })
+	utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Profile updated successfully",
+		"user": map[string]interface{}{
+			"id":        user.ID,
+			"name":      user.Name,
+			"email":     user.Email,
+			"role":      user.Role,
+			"createdAt": user.CreatedAt,
+			"updatedAt": user.UpdatedAt,
+		},
+	})
 }
-

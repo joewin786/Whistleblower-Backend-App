@@ -36,7 +36,7 @@ func (h *RoleHandler) CreateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role.CreatedAt = time.Now()
-	role.UpdateAt = time.Now()
+	role.UpdatedAt = time.Now()
 
 	if err := h.DB.Create(&role).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())

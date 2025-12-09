@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/utils"
 
@@ -90,6 +91,11 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 		"under_review": {
 			Title:   "Laporan Sedang Ditinjau",
 			Message: "Tim kami sedang menindaklanjuti laporan Anda",
+			Type:    "info",
+		},
+		"on_process": {
+			Title:   "Laporan Anda Sedang Di Proses",
+			Message: "Tim kami sedang memproses laporan Anda",
 			Type:    "info",
 		},
 		"resolved": {
@@ -205,8 +211,6 @@ func NotifyStatusChange(db *gorm.DB, reportID uint, oldStatus, newStatus string)
 	return nil
 }
 
-
-
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada laporan baru (untuk admin)
 func NotifyNewReport(db *gorm.DB, reportID uint, title string) error {
 	channel := "admin-notifications"
@@ -256,7 +260,6 @@ func NotifyNewReport(db *gorm.DB, reportID uint, title string) error {
 	fmt.Printf("[INFO] ✅ Admin di-notifikasi tentang report baru #%d\n", reportID)
 	return nil
 }
-
 
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada pesan chat baru
 // ✅ FUNGSI TAMBAHAN: Notifikasi saat ada pesan chat baru
@@ -394,7 +397,7 @@ func GetAllAdminNotifications(db *gorm.DB) http.HandlerFunc {
 // ✅ Fungsi untuk ambil notifikasi user dari database
 func GetUserNotifications(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
@@ -416,14 +419,14 @@ func GetUserNotifications(db *gorm.DB) http.HandlerFunc {
 // Mark single notification as read
 func MarkNotificationAsRead(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
 		}
 
 		notifID := chi.URLParam(r, "notificationId")
-		
+
 		var notif models.UserNotification
 		if err := db.Where("id = ? AND user_id = ?", notifID, uid).First(&notif).Error; err != nil {
 			utils.RespondWithError(w, http.StatusNotFound, "notification not found")
@@ -444,7 +447,7 @@ func MarkNotificationAsRead(db *gorm.DB) http.HandlerFunc {
 // Mark all notifications as read
 func MarkAllNotificationsAsRead(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
@@ -465,7 +468,7 @@ func MarkAllNotificationsAsRead(db *gorm.DB) http.HandlerFunc {
 		fmt.Printf("[DEBUG] Updated %d notifications\n", result.RowsAffected)
 
 		utils.RespondWithJSON(w, http.StatusOK, map[string]interface{}{
-			"message":        "all notifications marked as read",
+			"message":       "all notifications marked as read",
 			"rows_affected": result.RowsAffected,
 		})
 	}
@@ -474,14 +477,14 @@ func MarkAllNotificationsAsRead(db *gorm.DB) http.HandlerFunc {
 // Delete notification
 func DeleteNotification(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id in token")
 			return
 		}
 
 		notifID := chi.URLParam(r, "notificationId")
-		
+
 		result := db.Where("id = ? AND user_id = ?", notifID, uid).Delete(&models.UserNotification{})
 		if result.Error != nil {
 			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete notification")
@@ -503,7 +506,7 @@ func DeleteNotification(db *gorm.DB) http.HandlerFunc {
 // ✅ Fungsi untuk menghapus notifikasi user berdasarkan ID
 func DeleteUserNotification(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id")
 			return
@@ -532,7 +535,7 @@ func DeleteUserNotification(db *gorm.DB) http.HandlerFunc {
 // ✅ Fungsi untuk menghapus semua notifikasi user
 func DeleteAllUserNotifications(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := r.Context().Value("id").(string)
+		uid, ok := auth.GetIDFromContext(r.Context())
 		if !ok || uid == "" {
 			utils.RespondWithError(w, http.StatusUnauthorized, "missing user id")
 			return
@@ -546,8 +549,6 @@ func DeleteAllUserNotifications(db *gorm.DB) http.HandlerFunc {
 		utils.RespondWithJSON(w, 200, map[string]string{"message": "All notifications deleted successfully"})
 	}
 }
-
-
 
 // Tambahkan fungsi ini ke file: internal/notifications/handler.go
 
@@ -569,19 +570,16 @@ func NotifyAIAnalysisComplete(db *gorm.DB, reportID uint, verdict string, confid
 			Title:   "Laporan Terverifikasi",
 			Message: "Laporan Anda telah diverifikasi oleh sistem AI sebagai valid dan kredibel",
 			Type:    "success",
-			Emoji:   "✅",
 		},
 		"hoax": {
 			Title:   "Laporan Tidak Terverifikasi",
 			Message: "Sistem AI mendeteksi laporan ini mengandung informasi yang tidak dapat diverifikasi",
 			Type:    "warning",
-			Emoji:   "⚠️",
 		},
 		"unconfirmed": {
 			Title:   "Laporan Memerlukan Investigasi Lebih Lanjut",
 			Message: "Laporan Anda memerlukan investigasi manual lebih lanjut oleh tim kami",
 			Type:    "info",
-			Emoji:   "🔍",
 		},
 	}
 
@@ -752,4 +750,53 @@ func NotifyChatAgentHandoff(userID string, message string) error {
 
 	fmt.Printf("[CHAT AGENT] ⚡ Admin diberi tahu bahwa user %s meminta bantuan\n", userID)
 	return nil
+}
+
+func GetAdminUnreadCount(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var count int64
+		db.Model(&models.Notification{}).Where("is_read = ?", false).Count(&count)
+
+		utils.RespondWithJSON(w, 200, map[string]any{
+			"unread": count,
+		})
+	}
+}
+
+func MarkAdminNotificationsAsRead(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		result := db.Model(&models.Notification{}).
+			Where("is_read = ?", false).
+			Update("is_read", true)
+
+		if result.Error != nil {
+			utils.RespondWithError(w, 500, "failed to update admin notifications")
+			return
+		}
+
+		utils.RespondWithJSON(w, 200, map[string]interface{}{
+			"message": "all admin notifications marked as read",
+		})
+	}
+}
+
+func NotifyChatAgentDisconnect(userID string) error {
+	return Client.Trigger(
+		"admin-notifications",
+		"user-disconnected",
+		map[string]any{
+			"user_id": userID,
+		},
+	)
+}
+
+func NotifyAdminNewMessage(userID, message string) error {
+	return Client.Trigger(
+		"admin-notifications",
+		"admin-new-message",
+		map[string]any{
+			"user_id": userID,
+			"message": message,
+		},
+	)
 }

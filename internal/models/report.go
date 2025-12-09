@@ -5,6 +5,7 @@ import "time"
 const (
 	StatusSubmitted = "submitted"
 	StatusUnderReview = "under_review"
+	StatusOnProcess = "on_process"
 	StatusResolved = "resolved"
 	StatusDismissed = "dismissed"
 
@@ -27,6 +28,10 @@ type Report struct {
 	UpdatedAt    time.Time `json:"updatedAt"     gorm:"autoUpdateTime"`
 	User *User `json:"user,omitempty" gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;references:ID"`
 	Actions       []Action   `json:"actions" gorm:"foreignKey:ReportID;constraint:OnDelete:CASCADE;"`
+	InvestigatorID  *uint      `json:"investigator_id,omitempty" gorm:"type:integer;index;constraint:OnDelete:SET NULL"`
+	Investigator    *Admin     `json:"investigator,omitempty" gorm:"foreignKey:InvestigatorID;references:ID"`
+	AssignedAt      *time.Time `json:"assigned_at,omitempty"`
+	ResolvedAt      *time.Time `json:"resolved_at,omitempty"`
 }
 
 

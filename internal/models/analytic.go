@@ -3,7 +3,7 @@ package models
 
 type OverviewStats struct{
 	TotalReports int64 `json:"total_reports"`
-	UnderReviewReports int64 `json:"under_review_reports"`
+	UnderReviewReports int64 `json:"under_review"`
 	ResolvedReports int64 `json:"resolved_reports"`
 	DismissedReports int64 `json:"dismissed_reports"`
 	TotalInvestigators int64 `json:"total_investigators"`
@@ -25,8 +25,9 @@ type StatusStats struct{
 }
 
 type InvestigatorPerformance struct{
-	InvestigatorID uint `json:"investigator_id"`
+	InvestigatorID string `json:"investigator_id"`
 	InvestigatorName string `json:"investigator_name"`
+	Role             string `json:"role"` 
 	HandledReports int `json:"handled_reports"`
 	ResolvedReports int `json:"resolved_reports"`
 	AvgResponseTime string `json:"avg_response_time"`

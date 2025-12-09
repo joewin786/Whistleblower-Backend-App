@@ -6,13 +6,15 @@ import (
 	"net/http"
 	"time"
 
+	"whistleblower_REST/internal/auth"
+	"whistleblower_REST/internal/models"
+	"whistleblower_REST/internal/notifications"
+	"whistleblower_REST/internal/utils"
+	"whistleblower_REST/internal/websocket"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"whistleblower_REST/internal/utils"
-	"whistleblower_REST/internal/models"
-	"whistleblower_REST/internal/websocket" 
-	"whistleblower_REST/internal/notifications"
 )
 
 type Handler struct {
@@ -24,7 +26,6 @@ func NewHandler(db *gorm.DB, hub *websocket.Hub) *Handler {
 	return &Handler{DB: db, Hub: hub}
 }
 
-
 func parseUintID(s string) (uint, bool) {
 	var out uint
 	if s == "" {
@@ -35,7 +36,6 @@ func parseUintID(s string) (uint, bool) {
 	}
 	return out, true
 }
-
 
 func (h *Handler) GetByReportID(w http.ResponseWriter, r *http.Request) {
 	ridStr := chi.URLParam(r, "reportId")
@@ -57,7 +57,6 @@ func (h *Handler) GetByReportID(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, msgs)
 }
 
-
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	ridStr := chi.URLParam(r, "reportId")
 	rid, ok := parseUintID(ridStr)
@@ -66,10 +65,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawID := r.Context().Value("id")
-	fmt.Printf("📝 Raw ID from context: %#v (type: %T)\n", rawID, rawID)
+	uid, ok := auth.GetIDFromContext(r.Context())
+	fmt.Printf("📝 User ID from context: %s (ok: %v)\n", uid, ok)
 
-	uid, ok := rawID.(string)
 	if !ok || uid == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized: invalid or missing user ID")
 		return
@@ -82,11 +80,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := models.Message{
-		ID:        uuid.NewString(),
-		ReportID:  rid,
-		SenderID:  &uid,
-		Message:   in.Message,
-		CreatedAt: time.Now(),
+		ID:         uuid.NewString(),
+		ReportID:   rid,
+		SenderID:   &uid,
+		Message:    in.Message,
+		SenderRole: "user",
+		CreatedAt:  time.Now(),
 	}
 
 	if err := h.DB.Create(&msg).Error; err != nil {
@@ -149,10 +148,6 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, msg)
 }
 
-
-
-
-
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	ridStr := chi.URLParam(r, "reportId")
 	rid, ok := parseUintID(ridStr)
@@ -166,8 +161,6 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
-
 	res := h.DB.Where("id = ? AND report_id = ?", mid, rid).Delete(&models.Message{})
 	if res.Error != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, res.Error.Error())
@@ -180,7 +173,6 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "deleted successfully"})
 }
-
 
 // Fungsi IsRead Style
 func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
@@ -198,8 +190,8 @@ func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ambil user ID dari token (si pembaca pesan)
-	rawID := r.Context().Value("id")
-	currentUserID, ok := rawID.(string)
+	rawID, ok := auth.GetIDFromContext(r.Context())
+	currentUserID := rawID
 	if !ok || currentUserID == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -250,7 +242,6 @@ func (h *Handler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusOK, msg)
 }
 
-
 // ✅ Mark all messages in a report as read
 func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) {
 	ridStr := chi.URLParam(r, "reportId")
@@ -261,8 +252,8 @@ func (h *Handler) MarkAllMessagesAsRead(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Ambil user ID dari token (pembaca)
-	rawID := r.Context().Value("id")
-	currentUserID, ok := rawID.(string)
+	rawID, ok := auth.GetIDFromContext(r.Context())
+	currentUserID := rawID
 	if !ok || currentUserID == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -314,8 +305,8 @@ func (h *Handler) GetUnreadCount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get current user ID
-	rawID := r.Context().Value("id")
-	currentUserID, ok := rawID.(string)
+	rawID, ok := auth.GetIDFromContext(r.Context())
+	currentUserID := rawID
 	if !ok || currentUserID == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -324,7 +315,7 @@ func (h *Handler) GetUnreadCount(w http.ResponseWriter, r *http.Request) {
 	var count int64
 	// Hitung pesan yang belum dibaca dan BUKAN dari user sendiri
 	if err := h.DB.Model(&models.Message{}).
-		Where("report_id = ? AND is_read = ? AND (sender_id IS NULL OR sender_id != ?)", 
+		Where("report_id = ? AND is_read = ? AND (sender_id IS NULL OR sender_id != ?)",
 			rid, false, currentUserID).
 		Count(&count).Error; err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "failed to count messages")
@@ -390,8 +381,8 @@ func (h *Handler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get current user ID
-	rawID := r.Context().Value("id")
-	currentUserID, ok := rawID.(string)
+	rawID, ok := auth.GetIDFromContext(r.Context())
+	currentUserID := rawID
 	if !ok || currentUserID == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -451,7 +442,7 @@ func (h *Handler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		data, _ := json.Marshal(payload)
 		h.Hub.Broadcast(rid, data)
-		
+
 		fmt.Printf("✅ Broadcasted message_edited: message=%s\n", mid)
 	}
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"whistleblower_REST/internal/auth"
 	"whistleblower_REST/internal/models"
 	"whistleblower_REST/internal/utils"
 
@@ -61,7 +62,7 @@ func (h *FeedbackHandler) CreateFeedback(w http.ResponseWriter, r *http.Request)
 	// Get user ID from context (optional)
 	var userID *string
 	isAnonymous := true
-	if uid, ok := r.Context().Value("id").(string); ok && uid != "" {
+	if uid, ok := auth.GetIDFromContext(r.Context()); ok && uid != "" {
 		userID = &uid
 		isAnonymous = false
 	}
@@ -179,8 +180,6 @@ func (h *FeedbackHandler) GetAllFeedbacks(w http.ResponseWriter, r *http.Request
 
 	query := h.DB.Preload("FeedbackType").Preload("User").Preload("AdminUser")
 
-	
-
 	if typeID != "" {
 		query = query.Where("feedback_type_id = ?", typeID)
 	}
@@ -222,7 +221,7 @@ func (h *FeedbackHandler) GetFeedbackByID(w http.ResponseWriter, r *http.Request
 
 // GetMyFeedbacks gets feedbacks by current user
 func (h *FeedbackHandler) GetMyFeedbacks(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("id").(string)
+	userID, ok := auth.GetIDFromContext(r.Context())
 	if !ok || userID == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -245,7 +244,7 @@ func (h *FeedbackHandler) GetMyFeedbacks(w http.ResponseWriter, r *http.Request)
 
 // RespondToFeedback allows admin to respond to feedback
 func (h *FeedbackHandler) RespondToFeedback(w http.ResponseWriter, r *http.Request) {
-	adminID, ok := r.Context().Value("id").(string)
+	adminID, ok := auth.GetIDFromContext(r.Context())
 	if !ok || adminID == "" {
 		utils.RespondWithError(w, http.StatusUnauthorized, "unauthorized")
 		return

@@ -20,7 +20,7 @@ func (h *AnalyticsHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
 	var stats models.OverviewStats
 
 	h.DB.Model(&models.Report{}).Count(&stats.TotalReports)
-	h.DB.Model(&models.Report{}).Where("status = ?", "under_review_reports").Count(&stats.UnderReviewReports)
+	h.DB.Model(&models.Report{}).Where("status = ?", "under_review").Count(&stats.UnderReviewReports)
 	h.DB.Model(&models.Report{}).Where("status = ?", "resolved").Count(&stats.ResolvedReports)
 	h.DB.Model(&models.Report{}).Where("status = ?", "dismissed").Count(&stats.DismissedReports)
 	h.DB.Model(&models.User{}).Where("role = ?", "investigator").Count(&stats.TotalInvestigators)
@@ -104,46 +104,61 @@ func (h *AnalyticsHandler) GetByStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandler) GetInvestigatorPerformance(w http.ResponseWriter, r *http.Request) {
-	type result struct {
-		InvestigatorID   uint
-		InvestigatorName string
-		HandledReports   int
-		ResolvedReports  int
-		AvgResponseHours *float64
-	}
-	var rows []result
 
-	h.DB.Table("users AS u").
-		Select(`
-			u.id AS investigator_id,
-			u.full_name AS investigator_name,
-			COUNT(r.id) AS handled_reports,
-			SUM(CASE WHEN r.status = 'resolved' THEN 1 ELSE 0 END) AS resolved_reports,
-			AVG(TIMESTAMPDIFF(HOUR, r.assigned_at, r.resolved_at)) AS avg_response_hours
-		`).
-		Joins("LEFT JOIN reports r ON r.investigator_id = u.id").
-		Where("u.role = ?", "investigator").
-		Group("u.id, u.full_name").
-		Order("handled_reports DESC").
-		Scan(&rows)
+    type result struct {
+        InvestigatorID   string
+        InvestigatorName string
+        Role             string
+        HandledReports   int
+        ResolvedReports  int
+        AvgResponseHours *float64
+    }
 
-	data := []models.InvestigatorPerformance{} // ✅ inisialisasi
-	for _, r := range rows {
-		avgTime := "-"
-		if r.AvgResponseHours != nil {
-			avgTime = formatResponseTime(*r.AvgResponseHours)
-		}
-		data = append(data, models.InvestigatorPerformance{
-			InvestigatorID:   r.InvestigatorID,
-			InvestigatorName: r.InvestigatorName,
-			HandledReports:   r.HandledReports,
-			ResolvedReports:  r.ResolvedReports,
-			AvgResponseTime:  avgTime,
-		})
-	}
+    var rows []result
 
-	utils.RespondWithJSON(w, http.StatusOK, data)
+    // ✅ FIX: Gunakan tabel admins + PostgreSQL EXTRACT syntax
+    h.DB.Table("admins AS a").
+        Select(`
+            a.id::text AS investigator_id,
+            a.full_name AS investigator_name,
+            a.role AS role,
+            COUNT(r.id)::int AS handled_reports,
+            SUM(CASE WHEN r.status = 'resolved' THEN 1 ELSE 0 END)::int AS resolved_reports,
+            AVG(EXTRACT(EPOCH FROM (r.resolved_at - r.assigned_at)) / 3600) AS avg_response_hours
+        `).
+        Joins("LEFT JOIN reports r ON r.investigator_id = a.id").
+        Where("a.role = ? AND a.is_active = ?", "investigator", true).
+        Group("a.id, a.full_name, a.role").
+        Order("handled_reports DESC, resolved_reports DESC").
+        Scan(&rows)
+
+    data := []models.InvestigatorPerformance{}
+
+    for _, row := range rows {
+        avgTime := "N/A"
+        if row.AvgResponseHours != nil && *row.AvgResponseHours > 0 {
+            avgTime = formatResponseTime(*row.AvgResponseHours)
+        }
+
+        data = append(data, models.InvestigatorPerformance{
+            InvestigatorID:   row.InvestigatorID,
+            InvestigatorName: row.InvestigatorName,
+            Role:             row.Role,
+            HandledReports:   row.HandledReports,
+            ResolvedReports:  row.ResolvedReports,
+            AvgResponseTime:  avgTime,
+        })
+    }
+
+    // ✅ Return empty array jika tidak ada data
+    if len(data) == 0 {
+        utils.RespondWithJSON(w, http.StatusOK, []models.InvestigatorPerformance{})
+        return
+    }
+
+    utils.RespondWithJSON(w, http.StatusOK, data)
 }
+
 
 
 

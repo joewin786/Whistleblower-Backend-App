@@ -25,7 +25,6 @@ import (
 func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 	r := chi.NewRouter()
 
-	
 	wsHandler := websocket.NewWSHandler(db, hub)
 
 	// === Global middleware ===
@@ -49,8 +48,6 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 	aiHandler := ai.NewHandler(db)
 	feedbackTypeHandler := feedback.NewTypeHandler(db)
 	feedbackHandler := feedback.NewFeedbackHandler(db)
-	
-	
 
 	// FCM Routes
 	r.Group(func(r chi.Router) {
@@ -58,37 +55,33 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 
 		// Register device for push notifications
 		r.Post("/api/devices/register", notifications.RegisterDevice(db))
-		
+
 		// Unregister device
 		r.Post("/api/devices/unregister", notifications.UnregisterDevice(db))
-		
+
 		// Get all user devices
 		r.Get("/api/devices", notifications.GetUserDevices(db))
-		
+
 		// Delete specific device
 		r.Delete("/api/devices/{deviceId}", notifications.DeleteDevice(db))
-		
+
 		// Test push notification
 		r.Post("/api/notifications/test-push", notifications.TestPushNotification(db))
 	})
 
-
 	r.Route("/feedbacks", func(r chi.Router) {
 		// Public: Submit feedback (anonymous or authenticated)
 		r.With(auth.OptionalAuthMiddleware()).Post("/", feedbackHandler.CreateFeedback)
-		
+
 		// Public: Upload image for feedback
 		r.Post("/{feedbackId}/image", feedbackHandler.UploadFeedbackImage)
-		
+
 		// Public: Get active feedback types
 		r.Get("/types", feedbackTypeHandler.GetAllFeedbackTypes)
-		
+
 		// Protected: Get my feedbacks (user only)
 		r.With(authMiddleware).Get("/my", feedbackHandler.GetMyFeedbacks)
 	})
-
-
-
 
 	// ===== AUTH ROUTES =====
 	r.Route("/auth", func(r chi.Router) {
@@ -102,7 +95,7 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 		// === Password & Security === //
 		r.Post("/forgot-password", authHandler.ForgotPassword)
 		r.Post("/verify-code", authHandler.VerifyResetCode)
-		r.Post("/reset-password",authHandler.ResetPassword)
+		r.Post("/reset-password", authHandler.ResetPassword)
 
 		// === Change Password (with auth) === //
 		r.Group(func(r chi.Router) {
@@ -111,11 +104,8 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 			r.Post("/verify-change-code", authHandler.VerifyChangePasswordCode)
 			r.Post("/change-password", authHandler.ChangePassword)
 		})
-		
-		
-		
 
-		// === Logout === // 
+		// === Logout === //
 		r.Post("/logout", func(w http.ResponseWriter, r *http.Request) {
 			utils.RespondWithJSON(w, 200, map[string]string{"message": "logout"})
 		})
@@ -128,18 +118,69 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 		})
 	})
 
+	// ===== ADMIN AUTH ROUTES =====
+	r.Route("/admin/auth", func(r chi.Router) {
+		adminAuthService := auth.NewAdminAuthService(db)
+		adminAuthHandler := auth.NewAdminAuthHandler(adminAuthService)
 
-		
-	
+		// Initialize superadmin
+		if err := adminAuthService.InitializeSuperAdmin(); err != nil {
+			// Log error but don't stop the app
+		}
+
+		r.Post("/login", adminAuthHandler.AdminLogin)
+
+		r.Group(func(r chi.Router) {
+			r.Use(auth.AdminAuthMiddleware())
+			r.Use(auth.AdminOnlyMiddleware())
+			r.Get("/me", adminAuthHandler.GetMe)
+		})
+	})
+
+	// ===== ADMIN MANAGEMENT ROUTES =====
+	r.Route("/admin/management", func(r chi.Router) {
+		adminAuthService := auth.NewAdminAuthService(db)
+		adminAuthHandler := auth.NewAdminAuthHandler(adminAuthService)
+
+		r.Use(auth.AdminAuthMiddleware())
+
+		// Routes for Admin & Superadmin
+		r.Group(func(r chi.Router) {
+			r.Use(auth.AdminOnlyMiddleware())
+
+			r.Get("/admins", adminAuthHandler.GetAllAdmins)
+			r.Get("/admins/{id}", adminAuthHandler.GetAdminByID)
+			r.Put("/admins/{id}", adminAuthHandler.UpdateAdmin)
+			r.Patch("/admins/{id}/password", adminAuthHandler.ChangePassword)
+			r.Delete("/admins/{id}", adminAuthHandler.DeleteAdmin)
+
+			// Create investigator (admin & superadmin can do this)
+			r.Post("/investigators", adminAuthHandler.CreateInvestigator)
+			r.Get("/investigators", adminAuthHandler.GetAllInvestigators)
+		})
+
+		// Routes for Superadmin only
+		r.Group(func(r chi.Router) {
+			r.Use(auth.SuperAdminOnlyMiddleware())
+
+			// Create admin (only superadmin)
+			r.Post("/admins", adminAuthHandler.CreateAdmin)
+		})
+	})
 
 	// ===== PROTECTED ROUTES =====
 	r.Group(func(r chi.Router) {
 
-		 r.Post("/chat-agent", chatagent.ChatHandler)
+		r.Post("/chat-agent", chatagent.ChatHandler)
+		r.Post("/chat-agent/user-message", chatagent.UserMessageHandler) // ← Tambahkan ini
 
-		r.Route("/ws/reports", func(r chi.Router) {
-			r.Use(authMiddleware)
-			r.Get("/{reportId}", wsHandler.HandleConnections)
+		// ===== WEBSOCKET ROUTES =====
+
+		r.Route("/ws", func(r chi.Router) {
+			// User WebSocket
+			r.With(authMiddleware).Get("/reports/{reportId}", wsHandler.HandleConnections)
+			// Admin WebSocket - use admin middleware
+			r.With(auth.AdminAuthMiddleware()).Get("/admin/reports/{reportId}", wsHandler.HandleAdminConnections)
 		})
 
 		// ==== USERS ====
@@ -160,48 +201,28 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 		})
 
 		r.Group(func(r chi.Router) {
-		r.Use(auth.AuthMiddleware())
+			r.Use(auth.AuthMiddleware())
 
-		// Get user notifications
-		r.Get("/api/notifications/user", notifications.GetUserNotifications(db))
-		
-		// Mark single notification as read
-		r.Patch("/api/notifications/{notificationId}/read", notifications.MarkNotificationAsRead(db))
-		
-		// Mark all notifications as read
-		r.Patch("/api/notifications/read-all", notifications.MarkAllNotificationsAsRead(db))
-		
-		// Delete notification
-		r.Delete("/api/notifications/{notificationId}", notifications.DeleteNotification(db))
-		
-		// Delete all notifications
-		r.Delete("/api/notifications/all", notifications.DeleteAllUserNotifications(db))
-	})
+			// Get user notifications
+			r.Get("/api/notifications/user", notifications.GetUserNotifications(db))
 
-		
+			// Mark single notification as read
+			r.Patch("/api/notifications/{notificationId}/read", notifications.MarkNotificationAsRead(db))
+
+			// Mark all notifications as read
+			r.Patch("/api/notifications/read-all", notifications.MarkAllNotificationsAsRead(db))
+
+			// Delete notification
+			r.Delete("/api/notifications/{notificationId}", notifications.DeleteNotification(db))
+
+			// Delete all notifications
+			r.Delete("/api/notifications/all", notifications.DeleteAllUserNotifications(db))
+		})
 
 		// ==== REPORTS ====
 		r.Route("/reports", func(r chi.Router) {
-			
 
-			// Public 
-			r.Get("/{reportId}", reportHandler.GetByID)
 			r.Get("/{reportId}/messages", messageHandler.GetByReportID)
-			r.Get("/categories", categoryHandler.GetAllCategories)
-			r.With(auth.OptionalAuthMiddleware()).Post("/", reportHandler.Create) // publik bisa kirim laporan (optional auth)
-			r.Put("/{reportId}/assign", reportHandler.AssignAdmin)                // publik bisa assign admin (dengan email wajib)
-
-			 
-
-			// --- Protected routes (login required) ---
-			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware)
-				r.Get("/my", reportHandler.GetMy)             // laporan user login
-				r.With(auth.RoleMiddleware("admin")).Get("/", reportHandler.GetAll)
-				r.With(auth.RoleMiddleware("admin")).Patch("/{reportId}", reportHandler.Update)
-				r.Delete("/{reportId}", reportHandler.Delete) // hapus laporan
-				r.Get("/{reportId}/actions", actionHandler.GetActionsByReport)
-			})
 
 			// === EVIDENCE nested routes ===
 			r.Route("/{reportId}/evidence", func(r chi.Router) {
@@ -218,18 +239,34 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 				r.With(authMiddleware).Post("/", messageHandler.Create)
 
 				r.With(authMiddleware).Post("/upload", wsHandler.UploadMessageFile)
-				
 
 				r.With(authMiddleware).Get("/unread-count", messageHandler.GetUnreadCount)
-    			r.With(authMiddleware).Patch("/mark-all-read", messageHandler.MarkAllMessagesAsRead)
-    			r.With(authMiddleware).Get("/{messageId}/status", messageHandler.GetMessageReadStatus)
-    			r.With(authMiddleware).Patch("/{messageId}/read", messageHandler.MarkMessageAsRead)
-    
-    			// 🆕 Edit & Delete message (dengan auth)
+				r.With(authMiddleware).Patch("/mark-all-read", messageHandler.MarkAllMessagesAsRead)
+				r.With(authMiddleware).Get("/{messageId}/status", messageHandler.GetMessageReadStatus)
+				r.With(authMiddleware).Patch("/{messageId}/read", messageHandler.MarkMessageAsRead)
+
+				// 🆕 Edit & Delete message (dengan auth)
 				r.With(authMiddleware).Patch("/{messageId}", messageHandler.UpdateMessage)
-    			r.With(authMiddleware).Delete("/{messageId}", messageHandler.Delete)
-    			r.With(authMiddleware).Get("/{messageId}", messageHandler.GetByID)
+				r.With(authMiddleware).Delete("/{messageId}", messageHandler.Delete)
+				r.With(authMiddleware).Get("/{messageId}", messageHandler.GetByID)
 			})
+
+			// --- Protected routes (login required) ---
+			r.Group(func(r chi.Router) {
+				r.Use(authMiddleware)
+				r.Get("/my", reportHandler.GetMy) // laporan user login
+				r.With(auth.RoleMiddleware("admin")).Get("/", reportHandler.GetAll)
+				r.With(auth.RoleMiddleware("admin")).Patch("/{reportId}", reportHandler.Update)
+				r.Delete("/{reportId}", reportHandler.Delete) // hapus laporan
+				r.Get("/{reportId}/actions", actionHandler.GetActionsByReport)
+			})
+
+			// Public
+			r.Get("/{reportId}", reportHandler.GetByID)
+			r.Get("/categories", categoryHandler.GetAllCategories)
+			r.With(auth.OptionalAuthMiddleware()).Post("/", reportHandler.Create) // publik bisa kirim laporan (optional auth)
+			r.Put("/{reportId}/assign", reportHandler.AssignAdmin)                // publik bisa assign admin (dengan email wajib)
+
 		})
 
 		// ==== ANALYTICS ====
@@ -246,13 +283,17 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 
 		// ==== ADMIN CONFIG ====
 		r.Route("/admin/config", func(r chi.Router) {
-			r.Use(authMiddleware)
-			r.Use(auth.RoleMiddleware("admin"))
+			r.Use(auth.AdminAuthMiddleware())
+			r.Use(auth.AdminOnlyMiddleware())
 
 			r.Route("/admins", func(r chi.Router) {
-				r.Get("/", adminHandler.GetAdmins)     // GET /admin/config/admins?department=IT
-				r.Post("/", adminHandler.CreateAdmin)  // POST /admin/config/admins
+				r.Get("/", adminHandler.GetAdmins)    // GET /admin/config/admins?department=IT
+				r.Post("/", adminHandler.CreateAdmin) // POST /admin/config/admins
 			})
+
+			// Chat Agent (Admin)
+			r.Post("/chat-agent/reply", chatagent.AdminReplyHandler)
+			r.Post("/chat-agent/end-session", chatagent.AdminEndSessionHandler)
 
 			// Removed GET /categories here to keep it public above
 			r.Post("/categories", categoryHandler.CreateCategory)
@@ -273,21 +314,24 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 			r.Put("/workflows", workflowHandler.UpdateWorkflows)
 
 			// Notifications
-			r.Get("/notifications", notifications.GetAllAdminNotifications(db)) 
+			r.Get("/notifications", notifications.GetAllAdminNotifications(db))
+			r.Get("/notifications/unread-count", notifications.GetAdminUnreadCount(db))
+			r.Patch("/notifications/read-all", notifications.MarkAdminNotificationsAsRead(db))
 
 			// Actions
 			r.Route("/actions", func(r chi.Router) {
-				r.Post("/{reportId}", actionHandler.CreateAction)      // Buat tindakan untuk report tertentu
-				r.Get("/{reportId}", actionHandler.GetActionsByReport) // Ambil semua tindakan untuk report
+				r.Post("/{reportId}", actionHandler.CreateAction)                  // Buat tindakan untuk report tertentu
+				r.Get("/{reportId}", actionHandler.GetActionsByReport)             // Ambil semua tindakan untuk report
 				r.Patch("/{reportId}/complete", actionHandler.MarkActionCompleted) // Update Status Laporan
+				r.Patch("/{actionId}", actionHandler.UpdateAction)                 // Update action details
 			})
 
 			r.Route("/reviews", func(r chi.Router) {
-				r.Post("/", reviewHandler.Create)                    // Create review untuk report
-				r.Get("/", reviewHandler.GetAll)                     // Get all reviews
+				r.Post("/", reviewHandler.Create)                        // Create review untuk report
+				r.Get("/", reviewHandler.GetAll)                         // Get all reviews
 				r.Get("/report/{reportId}", reviewHandler.GetByReportID) // Get review by report ID
-				r.Patch("/report/{reportId}", reviewHandler.Update)  // Update review
-				r.Delete("/report/{reportId}", reviewHandler.Delete) // Delete review
+				r.Patch("/report/{reportId}", reviewHandler.Update)      // Update review
+				r.Delete("/report/{reportId}", reviewHandler.Delete)     // Delete review
 			})
 			r.Route("/ai", func(r chi.Router) {
 				r.Post("/analyze/{reportId}", aiHandler.AnalyzeReport)    // Trigger AI analysis
@@ -303,21 +347,21 @@ func RegisterRoutes(db *gorm.DB, hub *websocket.Hub) *chi.Mux {
 				r.Use(auth.RoleMiddleware("admin"))
 
 				// Feedback management
-				r.Get("/", feedbackHandler.GetAllFeedbacks)                   // List all feedbacks
-				r.Get("/{id}", feedbackHandler.GetFeedbackByID)              // Get feedback detail
-				r.Post("/{id}/respond", feedbackHandler.RespondToFeedback)   // Admin respond to feedback
-				r.Delete("/{id}", feedbackHandler.DeleteFeedback)            // Delete feedback
+				r.Get("/", feedbackHandler.GetAllFeedbacks)                // List all feedbacks
+				r.Get("/{id}", feedbackHandler.GetFeedbackByID)            // Get feedback detail
+				r.Post("/{id}/respond", feedbackHandler.RespondToFeedback) // Admin respond to feedback
+				r.Delete("/{id}", feedbackHandler.DeleteFeedback)          // Delete feedback
 
-		// Feedback type management
-			r.Route("/types", func(r chi.Router) {
-				r.Post("/", feedbackTypeHandler.CreateFeedbackType)      // Create feedback type
-				r.Get("/", feedbackTypeHandler.GetAllFeedbackTypes)      // List all types
-				r.Get("/{id}", feedbackTypeHandler.GetFeedbackTypeByID)  // Get type by ID
-				r.Patch("/{id}", feedbackTypeHandler.UpdateFeedbackType) // Update type
-				r.Delete("/{id}", feedbackTypeHandler.DeleteFeedbackType)// Delete type
+				// Feedback type management
+				r.Route("/types", func(r chi.Router) {
+					r.Post("/", feedbackTypeHandler.CreateFeedbackType)       // Create feedback type
+					r.Get("/", feedbackTypeHandler.GetAllFeedbackTypes)       // List all types
+					r.Get("/{id}", feedbackTypeHandler.GetFeedbackTypeByID)   // Get type by ID
+					r.Patch("/{id}", feedbackTypeHandler.UpdateFeedbackType)  // Update type
+					r.Delete("/{id}", feedbackTypeHandler.DeleteFeedbackType) // Delete type
+				})
 			})
 		})
-	})
 	})
 
 	r.Post("/notify", notifications.SendNotification(db))

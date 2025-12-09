@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -174,6 +175,51 @@ func ValidateChangePasswordToken(tokenString string) (string, string, error) {
 	}
 	
 	return email, role, nil
+}
+
+func GenerateTokenForAdmin(id uint, role string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"id":   id,  // ✅ Simpan sebagai number (akan jadi float64 di JWT)
+		"role": role,
+		"typ":  "access",
+		"exp":  time.Now().Add(time.Hour * 24).Unix(),
+	})
+	return token.SignedString(jwtSecret)
+}
+
+func ValidateAdminToken(tokenString string) (uint, string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("invalid signing method")
+		}
+		return jwtSecret, nil
+	})
+	
+	if err != nil || !token.Valid {
+		return 0, "", errors.New("invalid token")
+	}
+	
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		typ, _ := claims["typ"].(string)
+		if typ != "access" {
+			return 0, "", errors.New("invalid token type")
+		}
+		
+		// Parse id sebagai float64 dulu (JWT default), lalu convert ke uint
+		idFloat, ok := claims["id"].(float64)
+		if !ok {
+			return 0, "", errors.New("invalid token claims")
+		}
+		
+		role, _ := claims["role"].(string)
+		if role == "" {
+			return 0, "", errors.New("invalid token claims")
+		}
+		
+		return uint(idFloat), role, nil
+	}
+	
+	return 0, "", errors.New("invalid token claims")
 }
 
 

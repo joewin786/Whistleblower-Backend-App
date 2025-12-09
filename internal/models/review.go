@@ -6,7 +6,7 @@ import "time"
 type Review struct {
 	ID                uint       `json:"id" gorm:"primaryKey;autoIncrement"`
 	ReportID          uint       `json:"report_id" gorm:"not null;uniqueIndex"` // One review per report
-	AdminID           string     `json:"admin_id" gorm:"type:char(36);not null"`
+	AdminID uint `json:"admin_id" gorm:"not null"`
 	
 	// Scoring criteria (1-10)
 	CredibilityScore  int        `json:"credibility_score" gorm:"not null;check:credibility_score >= 1 AND credibility_score <= 10"`
@@ -25,7 +25,7 @@ type Review struct {
 	
 	// Relations
 	Report            *Report    `json:"report,omitempty" gorm:"foreignKey:ReportID;constraint:OnDelete:CASCADE"`
-	Admin             *User      `json:"admin,omitempty" gorm:"foreignKey:AdminID;references:ID"`
+	Admin *Admin `json:"admin,omitempty" gorm:"foreignKey:AdminID;references:ID"`
 }
 
 // CreateReviewRequest for creating a new review
