@@ -1,0 +1,8 @@
+# Ignore sensitive secret files
+# These contain actual credentials and should not be committed to Git
+secret.yaml
+firebase-secret.yaml
+
+# Keep template files for reference
+!secret.yaml.template
+!firebase-secret.yaml.template

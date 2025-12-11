@@ -1,6 +1,6 @@
 module whistleblower_REST
 
-go 1.25
+go 1.24.0
 
 require (
 	firebase.google.com/go/v4 v4.18.0

@@ -22,7 +22,7 @@ func (s *AdminAuthService) InitializeSuperAdmin() error {
 	s.db.Model(&models.Admin{}).Where("role = ?", "superadmin").Count(&count)
 
 	if count == 0 {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("SuperAdmin123!"), bcrypt.DefaultCost)
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
 		if err != nil {
 			return err
 		}

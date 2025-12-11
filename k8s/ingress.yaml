@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wb-api-ingress
+  namespace: whistleblower
+  annotations:
+    # For nginx ingress controller
+    kubernetes.io/ingress.class: nginx
+    # Enable CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "http://localhost:3000,http://192.168.150.94:3000"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    # SSL redirect (uncomment when you have SSL certificate)
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+  - host: api.yourdomain.com  # Update with your actual domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wb-api-service
+            port:
+              number: 80
+  # Uncomment when you have SSL certificate
+  # tls:
+  # - hosts:
+  #   - api.yourdomain.com
+  #   secretName: wb-api-tls

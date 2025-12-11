@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wb-api-config
+  namespace: whistleblower
+data:
+  # SMTP Configuration
+  SMTP_HOST: "smtp.gmail.com"
+  
+  # Database Configuration
+  DB_DRIVER: "postgres"
+  
+  # Firebase Configuration
+  FIREBASE_SERVICE_ACCOUNT_PATH: "/app/firebase-services-account.json"
+  
+  # Server Configuration
+  PORT: "8080"

@@ -1,0 +1,45 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# Firebase credentials
+firebase-services-account.json
+
+# Kubernetes secrets (actual files, not templates)
+k8s/secret.yaml
+k8s/firebase-secret.yaml
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Uploads directory (keep structure, ignore content)
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store

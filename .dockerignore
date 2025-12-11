@@ -1,0 +1,8 @@
+.git
+.gitignore
+.idea
+*.md
+uploads/*
+!uploads/.gitkeep
+*.iml
+.vscode

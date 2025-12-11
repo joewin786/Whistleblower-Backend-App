@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wb-api
+  namespace: whistleblower
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wb-api
+  template:
+    metadata:
+      labels:
+        app: wb-api
+    spec:
+      containers:
+      - name: wb-api
+        # Update this with your actual image registry and tag
+        image: your-registry/wb-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # Environment variables from ConfigMap
+        - name: SMTP_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wb-api-config
+              key: SMTP_HOST
+        - name: DB_DRIVER
+          valueFrom:
+            configMapKeyRef:
+              name: wb-api-config
+              key: DB_DRIVER
+        - name: FIREBASE_SERVICE_ACCOUNT_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: wb-api-config
+              key: FIREBASE_SERVICE_ACCOUNT_PATH
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: wb-api-config
+              key: PORT
+        
+        # Environment variables from Secret
+        - name: GOOGLE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: wb-api-secret
+              key: GOOGLE_CLIENT_ID
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: wb-api-secret
+              key: JWT_SECRET
+        - name: SMTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: wb-api-secret
+              key: SMTP_USER
+        - name: SMTP_PASS
+          valueFrom:
+            secretKeyRef:
+              name: wb-api-secret
+              key: SMTP_PASS
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: wb-api-secret
+              key: GEMINI_API_KEY
+        - name: GEMINI_API_KEY_CHAT
+          valueFrom:
+            secretKeyRef:
+              name: wb-api-secret
+              key: GEMINI_API_KEY_CHAT
+        - name: DB_SOURCE
+          valueFrom:
+            secretKeyRef:
+              name: wb-api-secret
+              key: DB_SOURCE
+        
+        # Volume mounts
+        volumeMounts:
+        - name: firebase-config
+          mountPath: /app/firebase-services-account.json
+          subPath: firebase-services-account.json
+          readOnly: true
+        - name: uploads
+          mountPath: /root/uploads
+        
+        # Resource limits
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      volumes:
+      - name: firebase-config
+        secret:
+          secretName: firebase-secret
+      - name: uploads
+        emptyDir: {}

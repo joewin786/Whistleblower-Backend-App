@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: whistleblower
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - firebase-secret.yaml
+  - postgres-pvc.yaml
+  - postgres-deployment.yaml
+  - postgres-service.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  # Uncomment if using Ingress
+  # - ingress.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app: wb-api
+  environment: production
+
+# Images to update (useful for CI/CD)
+images:
+  - name: your-registry/wb-api
+    newName: your-registry/wb-api
+    newTag: latest
