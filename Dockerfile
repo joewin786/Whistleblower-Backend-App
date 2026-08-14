@@ -30,6 +30,9 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/main .
 
+# Copy .env file
+COPY .env .
+
 # Copy Firebase service account file
 COPY firebase-services-account.json .
 
