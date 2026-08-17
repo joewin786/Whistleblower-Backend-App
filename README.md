@@ -1,93 +1,174 @@
-# wb-api
+# 🛡️ Whistleblower REST API (Backend)
 
+A high-performance RESTful API backend built with **Go (Golang)** for the Whistleblower System. This API provides authentication (JWT & Google OAuth), report & evidence management, AI-assisted report analysis via Google Gemini, real-time messaging (WebSocket & Pusher), push notifications (Firebase Cloud Messaging), and SMTP email integration.
 
+---
 
-## Getting started
+## 🚀 Key Features
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- 🔐 **Authentication & Security**:
+  - User Registration & Login (JWT Access & Refresh Tokens).
+  - Google OAuth2 Single Sign-On.
+  - Multi-Factor Password Reset & Password Change via Email OTP.
+  - Role-Based Access Control (RBAC) for Admin & SuperAdmin roles.
+- 📋 **Whistleblower Report & Evidence Management**:
+  - Anonymous and Authenticated report submissions.
+  - File and image evidence upload management.
+  - Report status tracking, admin assignment, and review workflow.
+- 🤖 **AI Integration (Google Gemini)**:
+  - Automatic risk assessment and summary generation for reports.
+  - AI Assistant / Chat Agent to guide reporters.
+- 💬 **Real-time Communication**:
+  - Live messaging between reporters and administrators via WebSocket & Pusher.
+- 🔔 **Notification System**:
+  - Push Notifications via Firebase Cloud Messaging (FCM).
+  - Email Notifications via SMTP (Gomail).
+- 📊 **Analytics & Reporting**:
+  - Report statistics and aggregated metrics for the Admin Dashboard.
+- ⚙️ **System Configuration & Feedback**:
+  - Category management, dynamic workflows, and system settings.
+  - User feedback submission & management.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+---
 
-## Add your files
+## 🛠️ Tech Stack
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+- **Programming Language**: Go 1.24+
+- **HTTP Router**: [Chi v5](https://github.com/go-chi/chi/v5)
+- **Database & ORM**: PostgreSQL / SQLite with [GORM](https://gorm.io/)
+- **Authentication**: JWT (`golang-jwt/jwt/v5`), Google API Client
+- **Real-Time**: Gorilla WebSocket, Pusher HTTP Go SDK
+- **AI Model**: Google Gemini API SDK
+- **Push Notification**: Firebase Admin SDK (`firebase.google.com/go/v4`)
+- **Email Service**: Gomail (`gopkg.in/mail.v2`)
+- **Container & Deployment**: Docker & Kubernetes
 
+---
+
+## 📂 Project Structure
+
+```text
+wb-api/
+├── main.go                       # Main Go application entry point
+├── go.mod / go.sum               # Go dependency management
+├── REST API.yaml                 # OpenAPI / Swagger REST API Specification
+├── Dockerfile                    # Multi-stage Docker build configuration
+├── k8s/                          # Kubernetes deployment manifests
+├── internal/
+│   ├── admin/                    # Admin, role, category & workflow logic
+│   ├── ai/                       # Google Gemini AI report analysis
+│   ├── analytics/                # Analytics handlers & metric calculations
+│   ├── auth/                     # Auth services (JWT, Google OAuth, Admin RBAC)
+│   ├── chatagent/                # AI Chatbot agent handler
+│   ├── database/                 # DB Connection (PostgreSQL/SQLite) & Migrations
+│   ├── evidence/                 # Upload & evidence file handlers
+│   ├── feedback/                 # User feedback management
+│   ├── messages/                 # Internal messaging feature
+│   ├── models/                   # GORM Database models
+│   ├── notifications/            # Firebase FCM integration & token management
+│   ├── reports/                  # Report CRUD & handling workflow logic
+│   ├── reviews/                  # Report review and assessment logic
+│   ├── utils/                    # Utility helpers (JSON responses, hashing, JWT)
+│   └── websocket/                # WebSocket connection hub & handler
+├── routes/
+│   └── router.go                 # REST API router registration & middleware
+├── scripts/                      # Helper scripts / migrations
+└── uploads/                      # Uploaded evidence file storage directory
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/ptfic/whistleblower/wb-api.git
-git branch -M main
-git push -uf origin main
+
+---
+
+## 📋 System Prerequisites
+
+Ensure you have the following installed:
+
+- **Go**: version `1.24` or later.
+- **PostgreSQL**: version `14+` (or SQLite for local testing).
+- **Firebase Service Account**: `firebase-services-account.json` file for FCM notifications.
+- **Google Gemini API Key**: from Google AI Studio.
+
+---
+
+## ⚙️ Environment Setup (`.env`)
+
+Create a `.env` file in the root of `wb-api/` (copy from `.env.example`):
+
+```env
+# Server Port
+PORT=8080
+
+# Database Configuration
+DB_DRIVER=postgres
+DB_SOURCE=postgresql://postgres:password@localhost:5432/whistleblower?sslmode=disable
+
+# Authentication & Keys
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+JWT_SECRET=your-super-secret-jwt-key
+
+# Email SMTP Setup (Gomail)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+
+# Google Gemini AI Integration
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_API_KEY_CHAT=your-gemini-chat-api-key
+
+# Firebase FCM Configuration
+FIREBASE_SERVICE_ACCOUNT_PATH=firebase-services-account.json
 ```
 
-## Integrate with your tools
+---
 
-- [ ] [Set up project integrations](https://gitlab.com/ptfic/whistleblower/wb-api/-/settings/integrations)
+## 🏃 Running the Application
 
-## Collaborate with your team
+### 1. Local Development
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```bash
+# 1. Navigate to backend directory
+cd wb-api
 
-## Test and Deploy
+# 2. Download dependencies
+go mod download
 
-Use the built-in continuous integration in GitLab.
+# 3. Run application
+go run main.go
+```
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+The server will start at `http://localhost:8080`.
 
-***
+### 2. Docker Setup
 
-# Editing this README
+```bash
+# Build Docker Image
+docker build -t wb-api:latest .
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+# Run Docker Container
+docker run -d -p 8080:8080 --env-file .env --name wb-api-app wb-api:latest
+```
 
-## Suggestions for a good README
+---
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## 🌐 REST API Endpoints Overview
 
-## Name
-Choose a self-explaining name for your project.
+Full OpenAPI/Swagger documentation is available in [`REST API.yaml`](file:///c:/Users/JOEWIN/Project/Whistleblower/wb-api/REST%20API.yaml).
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+| Method | Endpoint | Description | Access |
+| :--- | :--- | :--- | :--- |
+| **POST** | `/auth/register` | Register a new user | Public |
+| **POST** | `/auth/login` | User login (returns JWT) | Public |
+| **POST** | `/auth/google` | Authenticate via Google OAuth | Public |
+| **GET** | `/auth/me` | Fetch authenticated user profile | User |
+| **POST** | `/admin/auth/login` | Admin & SuperAdmin login | Public |
+| **GET** | `/reports` | Fetch reports list | Admin / User |
+| **POST** | `/reports` | Submit a new whistleblower report | Anonymous / User |
+| **POST** | `/reports/{id}/evidence` | Upload evidence attachment | Reporter / Admin |
+| **GET** | `/analytics/overview` | Fetch analytics summary metrics | Admin |
+| **WS** | `/ws` | WebSocket endpoint for real-time messaging | Authenticated |
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+---
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+## 📄 License & Copyright
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Copyright © 2026 PTFIC Whistleblower Team.
